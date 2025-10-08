@@ -62,7 +62,7 @@
   }
 }
 
-/* 诗句淡出动画（中间的句子） */
+/* 诗句淡出动画（所有句子） */
 @keyframes welcomeLineFadeOut {
   0% {
     opacity: 0.9;
@@ -72,38 +72,19 @@
   }
 }
 
-/* 入场动画 - 诗句下滑（第1句和最后1句） */
-/* 第1句："在AI时代" - 从25%下滑到底部4rem */
-@keyframes welcomeLineSlideDown-0 {
-  0% { 
-    top: 25%; 
-    bottom: auto;
-    opacity: 0.9; 
-    transform: translateX(-50%); 
+/* 诗句从底部淡入动画（第1句和最后1句） */
+@keyframes welcomeLineFadeInBottom {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
   }
-  100% { 
-    top: auto; 
-    bottom: 4rem; 
-    opacity: 0.7; 
-    transform: translateX(-50%); 
+  100% {
+    opacity: 0.7;
+    transform: translateX(-50%) translateY(0);
   }
 }
 
-/* 第8句："生活在诗句里" - 从60%下滑到底部2rem */
-@keyframes welcomeLineSlideDown-7 {
-  0% { 
-    top: 60%; 
-    bottom: auto; 
-    opacity: 0.9; 
-    transform: translateX(-50%); 
-  }
-  100% { 
-    top: auto; 
-    bottom: 2rem; 
-    opacity: 0.7; 
-    transform: translateX(-50%); 
-  }
-}
+/* 诗句下滑动画已移除 - 改为淡出后从底部淡入 */
 
 /* 欢迎屏幕淡出 */
 @keyframes welcomeFadeOut {

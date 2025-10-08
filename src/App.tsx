@@ -344,12 +344,11 @@ function App() {
             position: 'fixed',
             inset: 0,
             zIndex: welcomePhase === 'complete' ? 5 : 100,  // 完成后降到背景上方、emoji下方
-            background: welcomePhase === 'complete' ? 'transparent' : 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
+            background: 'transparent',  // 完全透明，让背景的星空、光芒和粒子层透过来
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             pointerEvents: welcomePhase === 'complete' ? 'none' : 'auto',  // 完成后不阻挡交互
-            transition: 'background 1s ease-out',
           }}
         >
           {/* 入场诗句 */}
@@ -365,18 +364,13 @@ function App() {
               // 计算位置
               const initialTop = 25 + index * 5; // 初始位置：25%, 30%, 35%...（间隔5%）
               
-              // 最终位置：第1行4rem，最后一行2rem，中间的淡出
-              let finalBottom;
-              let shouldFadeOut = false;
+              // 判断是否是第1句或最后1句
+              const isFirstLine = index === 0;
+              const isLastLine = index === welcomeLines.length - 1;
+              const shouldKeep = isFirstLine || isLastLine;
               
-              if (index === 0) {
-                finalBottom = 4; // 第1句在底部4rem
-              } else if (index === welcomeLines.length - 1) {
-                finalBottom = 2; // 最后1句在底部2rem
-              } else {
-                finalBottom = 3; // 中间的句子（会淡出，位置不重要）
-                shouldFadeOut = true;
-              }
+              // 最终位置
+              const finalBottom = isFirstLine ? 4 : 2; // 第1句4rem，最后1句2rem
               
               return (
                 <div
@@ -397,25 +391,27 @@ function App() {
                       transform: 'translateX(-50%) translateY(-10px)',
                       animation: `welcomeLineAppear 1s ease-out ${index}s forwards`,
                     }),
-                    // 阶段2：下滑到底部（第1句和最后1句），中间的淡出
+                    // 阶段2：所有诗句淡出
                     ...(welcomePhase === 'sliding' && {
-                      top: `${initialTop}%`,  // 明确设置起始位置
+                      top: `${initialTop}%`,  // 保持在原位置
                       opacity: 0.9,
+                      fontSize: '2.5rem',
                       transform: 'translateX(-50%)',
-                      animation: shouldFadeOut 
-                        ? `welcomeLineFadeOut 1.5s ease-out ${index * 0.2}s forwards`
-                        : `welcomeLineSlideDown-${index} 1.5s cubic-bezier(0.42, 0, 0.58, 1) ${index * 0.2}s forwards`,
+                      animation: `welcomeLineFadeOut 1.5s ease-out ${index * 0.15}s forwards`,
                     }),
-                    // 阶段3：停留在底部（只显示第1句和最后1句）
-                    ...(welcomePhase === 'complete' && !shouldFadeOut && {
+                    // 阶段3：只有第1句和最后1句从底部淡入
+                    ...(welcomePhase === 'complete' && shouldKeep && {
                       bottom: `${finalBottom}rem`,
-                      opacity: 0.7,
+                      opacity: 0,
+                      fontSize: '1.8rem',
                       transform: 'translateX(-50%)',
+                      animation: `welcomeLineFadeInBottom 1.5s ease-out ${isFirstLine ? 0 : 0.3}s forwards`,
                     }),
-                    // 中间的句子保持淡出状态
-                    ...(welcomePhase === 'complete' && shouldFadeOut && {
+                    // 其他句子保持淡出状态
+                    ...(welcomePhase === 'complete' && !shouldKeep && {
                       opacity: 0,
                       pointerEvents: 'none',
+                      display: 'none',
                     }),
                   }}
                 >
@@ -475,20 +471,20 @@ function App() {
         </div>
       )}
 
-      {/* 黎明渐变背景层 - 和入场诗第一句同步淡入 */}
+      {/* 黎明渐变背景层 - 0-3秒淡入 */}
       <div
         style={{
           position: 'fixed',
           inset: 0,
           background: 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
           opacity: 0,
-          animation: 'backgroundFadeIn 2s ease-out forwards, dawnGradient 40s ease-in-out 2s infinite',
+          animation: 'backgroundFadeIn3s 3s ease-out forwards, dawnGradient 40s ease-in-out 3s infinite',
           zIndex: 0,
         }}
       />
 
-      {/* 光芒层 - 和背景同步淡入 */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none', overflow: 'hidden', opacity: 0, animation: 'backgroundFadeIn 2s ease-out forwards' }}>
+      {/* 光芒层 - 1-5秒淡入 */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none', overflow: 'hidden', opacity: 0, animation: 'glowLayerFadeIn 4s ease-out 1s forwards' }}>
         {/* 核心光芒 */}
         <div
           style={{
@@ -500,7 +496,7 @@ function App() {
             borderRadius: '50%',
             background: 'radial-gradient(circle, rgba(255, 215, 0, 0.15) 0%, transparent 70%)',
             filter: 'blur(60px)',
-            animation: 'glow 12s ease-in-out 2s infinite',
+            animation: 'glow 12s ease-in-out 5s infinite',
             willChange: 'transform, opacity',
             backfaceVisibility: 'hidden',
           }}
@@ -516,7 +512,7 @@ function App() {
             borderRadius: '50%',
             background: 'radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%)',
             filter: 'blur(80px)',
-            animation: 'glowSlow 18s ease-in-out 2s infinite',
+            animation: 'glowSlow 18s ease-in-out 5s infinite',
             willChange: 'transform, opacity',
             backfaceVisibility: 'hidden',
           }}
@@ -532,14 +528,14 @@ function App() {
             borderRadius: '50%',
             background: 'radial-gradient(circle, rgba(255, 215, 0, 0.08) 0%, transparent 70%)',
             filter: 'blur(100px)',
-            animation: 'glowSlowest 25s ease-in-out 2s infinite',
+            animation: 'glowSlowest 25s ease-in-out 5s infinite',
             willChange: 'transform, opacity',
             backfaceVisibility: 'hidden',
           }}
         />
       </div>
 
-      {/* 粒子容器 - 背景淡入完成后开始淡入 */}
+      {/* 粒子容器 - 分批淡入 */}
       <div
         style={{
           position: 'fixed',
@@ -548,11 +544,9 @@ function App() {
           pointerEvents: 'none',
           overflow: 'hidden',
           contain: 'layout style paint',
-          opacity: 0,
-          animation: 'particlesFadeIn 3s ease-out 2s forwards',
         }}
       >
-        {/* 背景层粒子（最远，最小最暗，蓝色调） */}
+        {/* 背景层粒子（最远，最小最暗，蓝色调）- 3-6秒淡入 */}
         {particleSequences.backLayer.map((particle) => (
           <div
             key={particle.id}
@@ -565,15 +559,15 @@ function App() {
               borderRadius: '50%',
               background: particle.color + particle.opacity + ')',
               boxShadow: `0 0 ${particle.size * 2}px ${particle.color}0.5)`,
-              opacity: 1,
+              opacity: 0,
               willChange: 'transform, opacity',
               backfaceVisibility: 'hidden',
-              animation: `${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
+              animation: `particleBackLayerFadeIn 3s ease-out 3s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${6 + particle.animDelay}s infinite`,
             }}
           />
         ))}
         
-        {/* 中景层粒子（中等大小和亮度，淡蓝白色） */}
+        {/* 中景层粒子（中等大小和亮度，淡蓝白色）- 4-8秒淡入 */}
         {particleSequences.midLayer.map((particle) => (
           <div
             key={particle.id}
@@ -586,15 +580,15 @@ function App() {
               borderRadius: '50%',
               background: particle.color + particle.opacity + ')',
               boxShadow: `0 0 ${particle.size * 2.5}px ${particle.color}0.6)`,
-              opacity: 1,
+              opacity: 0,
               willChange: 'transform, opacity',
               backfaceVisibility: 'hidden',
-              animation: `${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
+              animation: `particleMidLayerFadeIn 4s ease-out 4s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${8 + particle.animDelay}s infinite`,
             }}
           />
         ))}
         
-        {/* 前景层粒子（最近，最大最亮，白色） */}
+        {/* 前景层粒子（最近，最大最亮，白色）- 5-10秒淡入 */}
         {particleSequences.frontLayer.map((particle) => (
           <div
             key={particle.id}
@@ -607,10 +601,10 @@ function App() {
               borderRadius: '50%',
               background: particle.color + particle.opacity + ')',
               boxShadow: `0 0 ${particle.size * 3}px ${particle.color}0.8)`,
-              opacity: 1,
+              opacity: 0,
               willChange: 'transform, opacity',
               backfaceVisibility: 'hidden',
-              animation: `${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
+              animation: `particleFrontLayerFadeIn 5s ease-out 5s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${10 + particle.animDelay}s infinite`,
             }}
           />
         ))}
