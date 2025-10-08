@@ -362,9 +362,21 @@ function App() {
             }}
           >
             {welcomeLines.map((line, index) => {
-              // 计算位置（更紧凑）
-              const initialTop = 25 + index * 5; // 初始位置：25%, 29%, 33%...（间隔5%）
-              const finalBottom = 2 + index * 2; // 下滑后位置：保持原顺序（第1行在底部2rem，第8行在16rem）
+              // 计算位置
+              const initialTop = 25 + index * 5; // 初始位置：25%, 30%, 35%...（间隔5%）
+              
+              // 最终位置：第1行4rem，最后一行2rem，中间的淡出
+              let finalBottom;
+              let shouldFadeOut = false;
+              
+              if (index === 0) {
+                finalBottom = 4; // 第1句在底部4rem
+              } else if (index === welcomeLines.length - 1) {
+                finalBottom = 2; // 最后1句在底部2rem
+              } else {
+                finalBottom = 3; // 中间的句子（会淡出，位置不重要）
+                shouldFadeOut = true;
+              }
               
               return (
                 <div
@@ -385,19 +397,25 @@ function App() {
                       transform: 'translateX(-50%) translateY(-10px)',
                       animation: `welcomeLineAppear 1s ease-out ${index}s forwards`,
                     }),
-                    // 阶段2：下滑到底部，顺序倒置（依次执行，每行延迟1秒）
+                    // 阶段2：下滑到底部（第1句和最后1句），中间的淡出
                     ...(welcomePhase === 'sliding' && {
-                      top: `${initialTop}%`,  // 明确设置起始位置（保持淡入后的位置）
+                      top: `${initialTop}%`,  // 明确设置起始位置
                       opacity: 0.9,
                       transform: 'translateX(-50%)',
-                      // 使用 cubic-bezier(0.42, 0, 0.58, 1) 实现开始慢→中间快→结束慢
-                      animation: `welcomeLineSlideDown-${index} 1.5s cubic-bezier(0.42, 0, 0.58, 1) ${index}s forwards`,
+                      animation: shouldFadeOut 
+                        ? `welcomeLineFadeOut 1.5s ease-out ${index * 0.2}s forwards`
+                        : `welcomeLineSlideDown-${index} 1.5s cubic-bezier(0.42, 0, 0.58, 1) ${index * 0.2}s forwards`,
                     }),
-                    // 阶段3：停留在底部
-                    ...(welcomePhase === 'complete' && {
+                    // 阶段3：停留在底部（只显示第1句和最后1句）
+                    ...(welcomePhase === 'complete' && !shouldFadeOut && {
                       bottom: `${finalBottom}rem`,
                       opacity: 0.7,
                       transform: 'translateX(-50%)',
+                    }),
+                    // 中间的句子保持淡出状态
+                    ...(welcomePhase === 'complete' && shouldFadeOut && {
+                      opacity: 0,
+                      pointerEvents: 'none',
                     }),
                   }}
                 >
