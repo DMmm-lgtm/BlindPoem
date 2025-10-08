@@ -194,6 +194,16 @@ function App() {
     return EMOJI_MOODS.map(() => 15 + Math.random() * 18);
   }, []);
 
+  // Emoji辉光大小范围（每个emoji不同）
+  const emojiGlowSizes = useMemo(() => {
+    return EMOJI_MOODS.map(() => ({
+      minSize: 10 + Math.random() * 8,      // 最小光辉：10-18px
+      maxSize: 20 + Math.random() * 12,     // 最大光辉：20-32px
+      minOpacity: 0.3 + Math.random() * 0.2, // 最小不透明度：0.3-0.5
+      maxOpacity: 0.5 + Math.random() * 0.3, // 最大不透明度：0.5-0.8
+    }));
+  }, []);
+
   // Emoji物理系统
   interface EmojiPhysics {
     x: number;
@@ -655,6 +665,7 @@ function App() {
         {EMOJI_MOODS.map((item, index) => {
           const glowColor = generateGlowColors[index];
           const glowDuration = emojiGlowDurations[index];
+          const glowSize = emojiGlowSizes[index];
           const initialPos = emojiInitialPositions[index];
           const physics = emojiPhysics[index];
           
@@ -683,7 +694,7 @@ function App() {
                 background: 'transparent',
                 pointerEvents: 'auto',
                 opacity: emojisVisible ? 1 : 0,
-                filter: `drop-shadow(0 0 10px rgba(${glowColor}, 0.4))`,
+                filter: `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`,
                 animation: emojisVisible 
                   ? `emojiSimpleFadeIn 5s ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out 5s infinite`
                   : 'none',
@@ -691,10 +702,10 @@ function App() {
                 willChange: usePhysics ? 'transform, filter' : 'filter',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.filter = `drop-shadow(0 0 20px rgba(${glowColor}, 0.7))`;
+                e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.maxSize * 1.5}px rgba(${glowColor}, ${glowSize.maxOpacity * 1.2}))`;
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.filter = `drop-shadow(0 0 10px rgba(${glowColor}, 0.4))`;
+                e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`;
               }}
               title={item.mood}
             >
@@ -707,13 +718,14 @@ function App() {
         <style>{`
           ${EMOJI_MOODS.map((_, index) => {
             const glowColor = generateGlowColors[index];
+            const glowSize = emojiGlowSizes[index];
             return `
               @keyframes emojiGlow-${index} {
                 0%, 100% {
-                  filter: drop-shadow(0 0 6px rgba(${glowColor}, 0.25));
+                  filter: drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}));
                 }
                 50% {
-                  filter: drop-shadow(0 0 12px rgba(${glowColor}, 0.45));
+                  filter: drop-shadow(0 0 ${glowSize.maxSize}px rgba(${glowColor}, ${glowSize.maxOpacity}));
                 }
               }
             `;
