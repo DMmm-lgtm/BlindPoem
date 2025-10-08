@@ -67,6 +67,19 @@ function App() {
     '生活在诗句里',
   ];
 
+  // 根据字符数计算每句的开始时间（总时长8秒）
+  const getLineStartTime = (index: number): number => {
+    const charCounts = [5, 11, 11, 6, 6, 14, 6, 6]; // 每句的字符数
+    const totalChars = charCounts.reduce((sum, count) => sum + count, 0); // 65
+    const totalDuration = 8; // 总时长8秒
+    
+    let startTime = 0;
+    for (let i = 0; i < index; i++) {
+      startTime += (charCounts[i] / totalChars) * totalDuration;
+    }
+    return startTime;
+  };
+
   // 入场动画时间控制
   useMemo(() => {
     // 8秒：8行诗句淡入完成
@@ -76,11 +89,11 @@ function App() {
       setWelcomePhase('sliding');
     }, 10000);
     
-    // 19秒（10秒 + 7秒延迟 + 1.5秒动画 + 0.5秒缓冲）后显示提示词和 Emoji
+    // 10.25秒：诗句开始在底部淡入（取消空白等待期）
     setTimeout(() => {
       setWelcomePhase('complete');
       setEmojisVisible(true);
-    }, 19000);
+    }, 10250);
     
     // 不再隐藏欢迎屏幕，让入场诗一直保持在背景
     // setTimeout(() => {
@@ -384,12 +397,12 @@ function App() {
                     color: '#ffd700',
                     textAlign: 'center',
                     whiteSpace: 'nowrap',
-                    // 阶段1：逐行淡入，停留在初始位置
+                    // 阶段1：逐行淡入，停留在初始位置（根据字符数分配时间）
                     ...(welcomePhase === 'lines' && {
                       top: `${initialTop}%`,
                       opacity: 0,
                       transform: 'translateX(-50%) translateY(-10px)',
-                      animation: `welcomeLineAppear 1s ease-out ${index}s forwards`,
+                      animation: `welcomeLineAppear 1s ease-out ${getLineStartTime(index)}s forwards`,
                     }),
                     // 阶段2：所有诗句淡出
                     ...(welcomePhase === 'sliding' && {
@@ -405,7 +418,7 @@ function App() {
                       opacity: 0,
                       fontSize: '1.8rem',
                       transform: 'translateX(-50%)',
-                      animation: `welcomeLineFadeInBottom 1.5s ease-out ${isFirstLine ? 0 : 0.3}s forwards`,
+                      animation: `welcomeLineFadeInBottom 1.5s ease-out ${isFirstLine ? 0 : 1}s forwards`,
                     }),
                     // 其他句子保持淡出状态
                     ...(welcomePhase === 'complete' && !shouldKeep && {
