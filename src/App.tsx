@@ -56,6 +56,11 @@ function App() {
     author: string;
   } | null>(null);
 
+  // 赞赏功能状态
+  const [showLoveButton, setShowLoveButton] = useState(false);  // 控制爱心按钮显示
+  const [isLoved, setIsLoved] = useState(false);                // 控制爱心是否被点击
+  const [showQRCode, setShowQRCode] = useState(false);          // 控制二维码显示
+
   // 入场诗句
   const welcomeLines = [
     '在AI时代',
@@ -80,6 +85,33 @@ function App() {
     }
     return startTime;
   };
+
+  // 赞赏功能计时器：诗句出现 10 秒后显示爱心按钮
+  useEffect(() => {
+    if (poemData) {
+      const timer = setTimeout(() => {
+        setShowLoveButton(true);
+      }, 10000); // 10 秒
+
+      return () => clearTimeout(timer);
+    } else {
+      // 诗句关闭时，重置所有赞赏状态
+      setShowLoveButton(false);
+      setIsLoved(false);
+      setShowQRCode(false);
+    }
+  }, [poemData]);
+
+  // 二维码自动消失计时器：显示 30 秒后自动隐藏
+  useEffect(() => {
+    if (showQRCode) {
+      const timer = setTimeout(() => {
+        setShowQRCode(false);
+      }, 30000); // 30 秒
+
+      return () => clearTimeout(timer);
+    }
+  }, [showQRCode]);
 
   // 入场动画时间控制
   useMemo(() => {
@@ -328,6 +360,12 @@ function App() {
       }
     };
   }, [physicsEnabled, emojiPhysics.length]);
+
+  // 处理爱心点击
+  const handleLoveClick = () => {
+    setIsLoved(true);
+    setShowQRCode(true);
+  };
 
   // AI 调用核心逻辑
   const handleEmojiClick = async (keyword: string, mood: string) => {
@@ -750,13 +788,56 @@ function App() {
               <p>— {poemData.author}</p>
             </div>
             
-            <button
-              onClick={() => setPoemData(null)}
-              className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all"
-            >
-              关闭
-            </button>
+            {/* 按钮区域 */}
+            <div className="mt-4 flex items-center justify-between">
+              <button
+                onClick={() => setPoemData(null)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all"
+              >
+                关闭
+              </button>
+              
+              {/* 爱心按钮 - 10秒后显示 */}
+              {showLoveButton && (
+                <button
+                  onClick={handleLoveClick}
+                  className="text-3xl transition-all duration-300 hover:scale-110"
+                  style={{
+                    transform: isLoved ? 'scale(1.2)' : 'scale(1)',
+                    filter: isLoved ? 'drop-shadow(0 0 8px rgba(255, 50, 50, 0.8))' : 'none',
+                  }}
+                  title={isLoved ? '感谢支持！' : '喜欢这首诗？'}
+                >
+                  {isLoved ? '❤️' : '🤍'}
+                </button>
+              )}
+            </div>
           </div>
+          
+          {/* 赞赏二维码 - 点击爱心后显示，在诗句框下方 */}
+          {showQRCode && (
+            <div
+              className="absolute pointer-events-auto"
+              style={{
+                top: '60%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                marginTop: '2rem',
+                animation: 'qrCodeFadeIn 0.5s ease-out forwards',
+              }}
+            >
+              <div className="bg-white rounded-xl p-4 shadow-2xl">
+                <img
+                  src="/qrcode.jpg"
+                  alt="赞赏二维码"
+                  className="w-48 h-48 object-contain"
+                />
+                <p className="text-center text-sm text-gray-600 mt-2">
+                  感谢您的支持 ❤️
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
