@@ -90,21 +90,21 @@ function App() {
       setWelcomePhase('sliding');
     }, 10000);
     
-    // 10.25秒：诗句开始在底部淡入
+    // 12.9秒：淡出完成后，底部诗句开始淡入
     setTimeout(() => {
       setWelcomePhase('complete');
-    }, 10250);
+    }, 12900);
     
-    // 11.4秒：Emoji开始淡入（第8句开始淡出时）
+    // 13.0秒：Emoji开始淡入（complete后0.1秒）
     setTimeout(() => {
       setEmojisVisible(true);
-    }, 11400);
+    }, 13000);
     
-    // 12.9秒：Emoji淡入完成后，提示词开始淡入
+    // 14.5秒：Emoji淡入完成后，提示词开始淡入
     setTimeout(() => {
       setShowPrompt(true);
       setShowPromptAnimation(true);
-    }, 12900);
+    }, 14500);
     
     // 不再隐藏欢迎屏幕，让入场诗一直保持在背景
     // setTimeout(() => {
