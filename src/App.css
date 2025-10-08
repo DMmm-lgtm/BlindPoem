@@ -1,3 +1,12 @@
+/* 引入自定义字体 - 千图笔锋手写体 */
+@font-face {
+  font-family: 'QianTuBiFeng';
+  src: url('/QianTuBiFengShouXieTi-2.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* 应用容器 - 入场动画 */
 .app-container {
   animation: appFadeIn 1.5s ease-out;
@@ -57,6 +66,123 @@
   100% {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+
+/* 入场动画 - 诗句逐行淡入 */
+@keyframes welcomeLineAppear {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 入场动画 - 诗句下滑（使用 cubic-bezier 实现开始慢→中间快→结束慢） */
+/* 注意：起始位置必须和 App.tsx 中的 initialTop 匹配（25 + index * 4） */
+/* 保持原顺序：第1行在底部2rem，第8行在顶部16rem */
+@keyframes welcomeLineSlideDown-0 {
+  0% { 
+    top: 25%; 
+    bottom: auto;
+    opacity: 0.9; 
+    transform: translateX(-50%); 
+  }
+  100% { 
+    top: auto; 
+    bottom: 2rem; 
+    opacity: 0.7; 
+    transform: translateX(-50%); 
+  }
+}
+@keyframes welcomeLineSlideDown-1 {
+  0% { top: 29%; bottom: auto; opacity: 0.9; transform: translateX(-50%); }
+  100% { top: auto; bottom: 4rem; opacity: 0.7; transform: translateX(-50%); }
+}
+@keyframes welcomeLineSlideDown-2 {
+  0% { top: 33%; bottom: auto; opacity: 0.9; transform: translateX(-50%); }
+  100% { top: auto; bottom: 6rem; opacity: 0.7; transform: translateX(-50%); }
+}
+@keyframes welcomeLineSlideDown-3 {
+  0% { top: 37%; bottom: auto; opacity: 0.9; transform: translateX(-50%); }
+  100% { top: auto; bottom: 8rem; opacity: 0.7; transform: translateX(-50%); }
+}
+@keyframes welcomeLineSlideDown-4 {
+  0% { top: 41%; bottom: auto; opacity: 0.9; transform: translateX(-50%); }
+  100% { top: auto; bottom: 10rem; opacity: 0.7; transform: translateX(-50%); }
+}
+@keyframes welcomeLineSlideDown-5 {
+  0% { top: 45%; bottom: auto; opacity: 0.9; transform: translateX(-50%); }
+  100% { top: auto; bottom: 12rem; opacity: 0.7; transform: translateX(-50%); }
+}
+@keyframes welcomeLineSlideDown-6 {
+  0% { top: 49%; bottom: auto; opacity: 0.9; transform: translateX(-50%); }
+  100% { top: auto; bottom: 14rem; opacity: 0.7; transform: translateX(-50%); }
+}
+@keyframes welcomeLineSlideDown-7 {
+  0% { top: 53%; bottom: auto; opacity: 0.9; transform: translateX(-50%); }
+  100% { top: auto; bottom: 16rem; opacity: 0.7; transform: translateX(-50%); }
+}
+
+/* 欢迎屏幕淡出 */
+@keyframes welcomeFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* Emoji 从上方滑入 */
+@keyframes emojiSlideInTop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -150%) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* Emoji 从右侧滑入 */
+@keyframes emojiSlideInRight {
+  0% {
+    opacity: 0;
+    transform: translate(100%, -50%) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* Emoji 从下方滑入 */
+@keyframes emojiSlideInBottom {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 100%) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* Emoji 从左侧滑入 */
+@keyframes emojiSlideInLeft {
+  0% {
+    opacity: 0;
+    transform: translate(-200%, -50%) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
   }
 }
 

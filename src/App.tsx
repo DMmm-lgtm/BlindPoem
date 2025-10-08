@@ -42,12 +42,50 @@ const EMOJI_MOODS = [
 ];
 
 function App() {
+  // 入场动画状态
+  const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [emojisVisible, setEmojisVisible] = useState(false);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [poemData, setPoemData] = useState<{
     content: string;
     poem_title: string;
     author: string;
   } | null>(null);
+
+  // 入场诗句
+  const welcomeLines = [
+    '在AI的时代',
+    '做一件AI做不了的小事',
+    '读一句诗  读一首诗',
+    '让意识流淌过',
+    '让感受激发出',
+    '穿越  翱翔  跋涉  漂浮  ……',
+    '沉浸在生活外',
+    '生活在诗句里',
+  ];
+
+  // 入场动画时间控制
+  useMemo(() => {
+    // 8秒：8行诗句淡入完成
+    // 停留2秒，让用户欣赏完整诗句
+    // 10秒：开始下滑动画
+    setTimeout(() => {
+      setWelcomePhase('sliding');
+    }, 10000);
+    
+    // 19秒（10秒 + 7秒延迟 + 1.5秒动画 + 0.5秒缓冲）后显示提示词和 Emoji
+    setTimeout(() => {
+      setWelcomePhase('complete');
+      setEmojisVisible(true);
+    }, 19000);
+    
+    // 23秒后隐藏欢迎屏幕
+    setTimeout(() => {
+      setShowWelcome(false);
+    }, 23000);
+  }, []);
 
   // 🌟 粒子系统 - 使用 useMemo 缓存，避免闪烁
   const particleSequences = useMemo(() => {
@@ -163,6 +201,97 @@ function App() {
 
   return (
     <div className="app-container min-h-screen relative overflow-hidden">
+      {/* 入场欢迎屏幕 */}
+      {showWelcome && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: welcomePhase === 'complete' ? 'welcomeFadeOut 3s ease-out forwards' : 'none',
+          }}
+        >
+          {/* 入场诗句 */}
+          <div
+            style={{
+              position: 'relative',
+              width: '80%',
+              maxWidth: '600px',
+              height: '100vh',
+            }}
+          >
+            {welcomeLines.map((line, index) => {
+              // 计算位置（更紧凑）
+              const initialTop = 25 + index * 4; // 初始位置：25%, 29%, 33%...（间隔4%）
+              const finalBottom = 2 + index * 2; // 下滑后位置：保持原顺序（第1行在底部2rem，第8行在16rem）
+              
+              return (
+                <div
+                  key={index}
+                  className={`welcome-line-${index}`}
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    fontSize: '2.0rem',
+                    fontFamily: 'QianTuBiFeng, sans-serif',
+                    color: '#ffd700',
+                    textAlign: 'center',
+                    whiteSpace: 'nowrap',
+                    // 阶段1：逐行淡入，停留在初始位置
+                    ...(welcomePhase === 'lines' && {
+                      top: `${initialTop}%`,
+                      opacity: 0,
+                      transform: 'translateX(-50%) translateY(-10px)',
+                      animation: `welcomeLineAppear 1s ease-out ${index}s forwards`,
+                    }),
+                    // 阶段2：下滑到底部，顺序倒置（依次执行，每行延迟1秒）
+                    ...(welcomePhase === 'sliding' && {
+                      top: `${initialTop}%`,  // 明确设置起始位置（保持淡入后的位置）
+                      opacity: 0.9,
+                      transform: 'translateX(-50%)',
+                      // 使用 cubic-bezier(0.42, 0, 0.58, 1) 实现开始慢→中间快→结束慢
+                      animation: `welcomeLineSlideDown-${index} 1.5s cubic-bezier(0.42, 0, 0.58, 1) ${index}s forwards`,
+                    }),
+                    // 阶段3：停留在底部
+                    ...(welcomePhase === 'complete' && {
+                      bottom: `${finalBottom}rem`,
+                      opacity: 0.7,
+                      transform: 'translateX(-50%)',
+                    }),
+                  }}
+                >
+                  {line}
+                </div>
+              );
+            })}
+            
+            {/* 操作提示词（下滑完成后显示） */}
+            {welcomePhase === 'complete' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '33%',
+                  transform: 'translateX(-50%)',
+                  fontSize: '1.3rem',
+                  fontFamily: 'QianTuBiFeng, sans-serif',
+                  color: 'rgba(255, 215, 0, 0.8)',
+                  textAlign: 'center',
+                  opacity: 0,
+                  animation: 'welcomeLineAppear 2s ease-out forwards',
+                }}
+              >
+                在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 背景呼吸层 */}
       <div
         style={{
@@ -301,21 +430,31 @@ function App() {
 
       {/* Emoji 按钮区域 */}
       <div className="emoji-container" style={{ position: 'relative', zIndex: 10 }}>
-        {EMOJI_MOODS.map((item, index) => (
-          <button
-            key={index}
-            onClick={() => handleEmojiClick(item.keyword, item.mood)}
-            className="emoji-btn absolute text-5xl cursor-pointer hover:scale-110 transition-transform"
-            style={{
-              top: positions[index].top,
-              left: positions[index].left,
-              transform: 'translate(-50%, -50%)',
-            }}
-            title={item.mood}
-          >
-            {item.emoji}
-          </button>
-        ))}
+        {EMOJI_MOODS.map((item, index) => {
+          // 为每个 Emoji 计算入场方向和延迟
+          const sides = ['top', 'right', 'bottom', 'left'];
+          const side = sides[index % 4];
+          
+          return (
+            <button
+              key={index}
+              onClick={() => handleEmojiClick(item.keyword, item.mood)}
+              className="emoji-btn absolute text-5xl cursor-pointer hover:scale-110 transition-transform"
+              style={{
+                top: positions[index].top,
+                left: positions[index].left,
+                transform: 'translate(-50%, -50%)',
+                opacity: emojisVisible ? 1 : 0,
+                animation: emojisVisible 
+                  ? `emojiSlideIn${side.charAt(0).toUpperCase() + side.slice(1)} 2s ease-out ${index * 0.1}s forwards`
+                  : 'none',
+              }}
+              title={item.mood}
+            >
+              {item.emoji}
+            </button>
+          );
+        })}
       </div>
 
       {/* 诗句展示区域（中央） */}
