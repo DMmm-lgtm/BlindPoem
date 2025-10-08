@@ -100,17 +100,28 @@ function App() {
     return startTime + index * 0.5; // 每句增加0.5秒delay
   };
 
-  // 赞赏功能计时器：根据诗句长度动态调整爱心按钮出现时间（每秒1.5个字符，上限15秒）
+  // 赞赏功能计时器：根据诗句长度动态调整爱心按钮出现时间
   useEffect(() => {
     if (poemData) {
-      // 计算诗句字符数（去除标点符号后的纯文字长度）
-      const pureTextLength = poemData.content.replace(/[，。、；！？\s]/g, '').length;
+      // 去除标点符号
+      const textWithoutPunctuation = poemData.content.replace(/[，。、；！？\s]/g, '');
       
-      // 每秒3个字符，转换为毫秒，上限15秒
-      const calculatedDuration = (pureTextLength / 3) * 1000;
-      const displayDuration = Math.min(calculatedDuration, 15000); // 最大15秒
+      // 区分中文和非中文字符
+      const chineseChars = textWithoutPunctuation.match(/[\u4e00-\u9fa5]/g) || [];
+      const nonChineseChars = textWithoutPunctuation.replace(/[\u4e00-\u9fa5]/g, '');
       
-      console.log(`✅ 诗句字符数：${pureTextLength}，爱心按钮将在 ${displayDuration / 1000} 秒后出现`);
+      const chineseLength = chineseChars.length;
+      const nonChineseLength = nonChineseChars.length;
+      
+      // 中文：每秒3个字符，非中文：每秒6个字符
+      const chineseDuration = (chineseLength / 3) * 1000;
+      const nonChineseDuration = (nonChineseLength / 8) * 1000;
+      const calculatedDuration = chineseDuration + nonChineseDuration;
+      
+      // 上限15秒
+      const displayDuration = Math.min(calculatedDuration, 15000);
+      
+      console.log(`✅ 诗句字符：中文${chineseLength}个，非中文${nonChineseLength}个，爱心按钮将在 ${(displayDuration / 1000).toFixed(1)} 秒后出现`);
       
       const timer = setTimeout(() => {
         setShowLoveButton(true);
