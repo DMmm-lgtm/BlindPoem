@@ -1,0 +1,212 @@
+---
+alwaysApply: true
+---
+
+# API 和数据库操作规范
+
+## Gemini AI API 使用规范
+
+### 核心原则
+1. **动态提示词生成**: 根据用户选择的心情关键词，动态调整 prompt
+2. **严格 JSON 返回**: 要求 AI 返回纯 JSON，不包含 markdown 标记
+3. **错误处理**: 必须有 try-catch，失败时触发容错机制
+
+### 提示词模板
+```typescript
+const prompt = `你是一位精通中国古典诗词的诗人。请根据"${moodName}"这个心情，从中国古典诗词中选择一句最贴合的诗句（不超过30字）。
+
+要求：
+1. 必须是真实存在的中国古典诗句
+2. 诗句要与"${moodName}"这个心情高度契合
+3. 返回格式必须是严格的 JSON，不要包含任何 markdown 标记或其他文本
+
+返回格式示例：
+{
+  "content": "诗句内容",
+  "poem_title": "诗名",
+  "author": "作者"
+}`;
+```
+
+### API 调用流程
+```typescript
+// 1. 调用 Gemini API
+const poem = await generatePoem(keyword, mood);
+
+// 2. 验证返回数据
+if (!poem.content || !poem.poem_title || !poem.author) {
+  throw new Error('AI 返回数据不完整');
+}
+
+// 3. 展示诗句
+setPoemData(poem);
+
+// 4. 异步保存到数据库（不阻塞 UI）
+savePoemToDatabase(poem.content, poem.poem_title, poem.author, keyword);
+```
+
+### 错误处理
+```typescript
+try {
+  const poem = await generatePoem(keyword, mood);
+  // 成功逻辑
+} catch (error) {
+  console.error('❌ AI 调用失败，尝试从数据库读取：', error);
+  
+  // 容错机制：从数据库随机读取
+  const fallbackPoem = await getRandomPoemFromDatabase();
+  
+  if (fallbackPoem) {
+    setPoemData(fallbackPoem);
+  } else {
+    alert('获取诗句失败，且数据库中暂无备用诗句。');
+  }
+}
+```
+
+---
+
+## Supabase 数据库操作规范
+
+### 核心原则
+1. **唯一性保证**: 写入前必须检查诗句是否已存在（content 字段）
+2. **容错机制**: AI 失败时从数据库随机读取备用诗句
+3. **异步操作**: 数据库写入不应阻塞 UI 渲染
+4. **权限控制**: 使用 RLS（Row Level Security）策略
+
+### 数据表结构
+```sql
+CREATE TABLE poems (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content TEXT NOT NULL UNIQUE,  -- 诗句内容（唯一性约束）
+  poem_title TEXT,                -- 诗名
+  author TEXT,                    -- 作者
+  mood TEXT,                      -- 心情关键词（happy, sad, excited...）
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 索引优化
+CREATE INDEX idx_poems_mood ON poems(mood);
+CREATE INDEX idx_poems_created_at ON poems(created_at DESC);
+```
+
+### 写入操作（唯一性检查）
+```typescript
+export async function savePoemToDatabase(
+  content: string,
+  poem_title: string,
+  author: string,
+  mood: string
+): Promise<boolean> {
+  try {
+    // 1. 先检查是否已存在
+    const exists = await isPoemExists(content);
+    
+    if (exists) {
+      console.log('⚠️ 诗句已存在，跳过写入：', content);
+      return false;
+    }
+
+    // 2. 写入数据库
+    const { error } = await supabase.from('poems').insert({
+      content,
+      poem_title,
+      author,
+      mood,
+    });
+
+    if (error) {
+      console.error('❌ 写入 Supabase 失败：', error);
+      return false;
+    }
+
+    console.log('✅ 诗句已保存到 Supabase：', content);
+    return true;
+  } catch (error) {
+    console.error('❌ savePoemToDatabase 错误：', error);
+    return false;
+  }
+}
+```
+
+### 读取操作（随机获取）
+```typescript
+export async function getRandomPoemFromDatabase(): Promise<Poem | null> {
+  try {
+    // 先取 10 条，然后在客户端随机选一条（简单有效）
+    const { data, error } = await supabase
+      .from('poems')
+      .select('*')
+      .limit(10);
+
+    if (error || !data || data.length === 0) {
+      return null;
+    }
+
+    // 客户端随机选择
+    const randomIndex = Math.floor(Math.random() * data.length);
+    return data[randomIndex];
+  } catch (error) {
+    console.error('❌ getRandomPoemFromDatabase 错误：', error);
+    return null;
+  }
+}
+```
+
+### 查询唯一性
+```typescript
+async function isPoemExists(content: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('poems')
+    .select('id')
+    .eq('content', content)
+    .single();
+
+  // PGRST116 = 没有找到记录，这是正常的
+  if (error && error.code !== 'PGRST116') {
+    console.error('查询诗句失败：', error);
+  }
+
+  return data !== null;
+}
+```
+
+### RLS 策略
+```sql
+-- 启用 RLS
+ALTER TABLE poems ENABLE ROW LEVEL SECURITY;
+
+-- 允许所有人读取
+CREATE POLICY "Enable read access for all users" ON poems
+  FOR SELECT USING (true);
+
+-- 允许所有人插入（暂时，后续可改为需要认证）
+CREATE POLICY "Enable insert for all users" ON poems
+  FOR INSERT WITH CHECK (true);
+```
+
+---
+
+## 最佳实践
+
+### ✅ 推荐做法
+- 所有 API 调用都封装在 `src/lib/` 目录下
+- 使用 TypeScript 接口定义返回数据类型
+- 错误信息使用 emoji 前缀（✅ ❌ ⚠️）便于调试
+- 数据库操作异步执行，不阻塞 UI
+- 环境变量检查：启动时验证是否配置
+
+### ❌ 避免做法
+- 不要在组件中直接调用 API，应通过 service 层
+- 不要在前端硬编码 API Key
+- 不要忽略错误处理
+- 不要重复写入相同的诗句（必须检查唯一性）
+- 不要在数据库操作失败时不提供任何反馈
+
+### 调试技巧
+```typescript
+// 使用带 emoji 的日志便于区分
+console.log('✅ 成功：', data);
+console.error('❌ 失败：', error);
+console.warn('⚠️ 警告：', message);
+```

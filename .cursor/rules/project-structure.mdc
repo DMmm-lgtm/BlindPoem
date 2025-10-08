@@ -1,0 +1,97 @@
+---
+alwaysApply: true
+---
+
+# BlindPoem 项目结构指南
+
+## 项目概述
+BlindPoem（盲盒诗）是一个诗意的网页应用，用户点击心情 Emoji 按钮，通过 Gemini AI 获取相应的中国古典诗句，并体验极致的视觉沉浸感。
+
+## 核心技术栈
+- **前端框架**: React 18 + TypeScript
+- **构建工具**: Vite
+- **样式方案**: Tailwind CSS
+- **AI 服务**: Google Gemini API
+- **数据库**: Supabase (PostgreSQL)
+- **部署**: Vercel
+
+## 目录结构
+
+### 主要入口文件
+- [index.html](mdc:index.html) - HTML 模板入口
+- [src/main.tsx](mdc:src/main.tsx) - React 应用入口点
+- [src/App.tsx](mdc:src/App.tsx) - 主应用组件，包含 17 个 Emoji 按钮和诗句展示逻辑
+
+### 核心模块 (src/lib/)
+- [src/lib/supabaseClient.ts](mdc:src/lib/supabaseClient.ts) - Supabase 客户端配置和类型定义
+- [src/lib/geminiClient.ts](mdc:src/lib/geminiClient.ts) - Gemini AI API 调用封装
+- [src/lib/poemService.ts](mdc:src/lib/poemService.ts) - 诗句的存储和读取服务（唯一性检查、容错机制）
+
+### 样式系统
+- [src/index.css](mdc:src/index.css) - 全局样式和 Tailwind 配置
+- [src/App.css](mdc:src/App.css) - 应用级样式和动画定义
+- [tailwind.config.js](mdc:tailwind.config.js) - Tailwind CSS 配置（包含自定义颜色）
+
+### 配置文件
+- [.env.local](mdc:.env.local) - 环境变量（API Keys，不提交到 Git）
+- [vite.config.ts](mdc:vite.config.ts) - Vite 构建配置
+- [tsconfig.json](mdc:tsconfig.json) - TypeScript 配置
+
+### 文档
+- [prp.md](mdc:prp.md) - 产品需求文档（Product Requirement Plan）
+- [tasks.md](mdc:tasks.md) - 开发任务清单（Tasks）
+- [README.md](mdc:README.md) - 项目说明文档
+
+## 核心功能模块
+
+### 1. Emoji 按钮系统
+- 17 个不同的 Emoji，每个对应一种心情（如：😊 快乐、😢 悲伤、🚀 激动）
+- 每个 Emoji 包含 `emoji`、`mood`（中文名）、`keyword`（英文关键词）
+- 按钮随机分布在页面上，具有呼吸式辉光效果
+
+### 2. AI 诗句生成
+- 根据用户点击的 Emoji，提取心情关键词
+- 动态生成提示词，调用 Gemini API
+- 返回 JSON 格式：`{ content, poem_title, author }`
+- 诗句不超过 30 字，必须是真实的中国古典诗句
+
+### 3. 数据持久化（Supabase）
+- **写入逻辑**：AI 成功返回后，先查询唯一性（content 字段），不重复才写入
+- **读取逻辑**：AI 调用失败时，从数据库随机读取一条诗句作为备用
+- **数据表**: `poems` 表包含字段：id, content, poem_title, author, mood, created_at
+
+### 4. 商业化功能
+- 诗句展示 10 秒后，显示空心爱心按钮 🤍
+- 用户点击后，爱心变红心 ❤️，并弹出赞赏二维码图片
+
+## 设计原则
+1. **极致简约**: 只保留核心功能，不做用户登录、收藏等复杂功能
+2. **视觉沉浸**: 深色渐变背景、呼吸式辉光、流畅的动画效果
+3. **容错优先**: AI 失败时自动降级到数据库备用诗句
+4. **性能优化**: 使用 React 状态管理，避免不必要的重渲染
+
+## 开发规范
+1. 所有 API 调用都应有完善的错误处理
+2. 环境变量必须通过 `.env.local` 管理，不提交到 Git
+3. 样式优先使用 Tailwind CSS 类名，复杂动画写在 CSS 文件中
+4. TypeScript 类型定义要完整，避免使用 `any`
+5. 组件保持简洁，核心逻辑封装在 `lib/` 目录下
+
+## 环境变量
+```env
+VITE_SUPABASE_URL=你的_Supabase_项目_URL
+VITE_SUPABASE_ANON_KEY=你的_Supabase_匿名_Key
+VITE_GEMINI_API_KEY=你的_Gemini_API_Key
+```
+
+## 数据库架构
+```sql
+CREATE TABLE poems (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content TEXT NOT NULL UNIQUE,  -- 诗句内容（唯一性约束）
+  poem_title TEXT,                -- 诗名
+  author TEXT,                    -- 作者
+  mood TEXT,                      -- 心情关键词
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
