@@ -725,13 +725,19 @@ function App() {
       {poemData && (
         <div className="fixed inset-0 flex items-center justify-center z-20 pointer-events-none">
           <div className="poem-display bg-black/40 backdrop-blur-md rounded-2xl p-8 max-w-2xl pointer-events-auto">
-            <p className="text-2xl text-white mb-4 leading-relaxed">
-              {poemData.content}
-            </p>
-            <div className="text-sm text-gold/80">
+            {/* 诗句内容 - 左对齐，一句一行 */}
+            <div className="text-2xl text-white mb-4 leading-relaxed text-left">
+              {poemData.content.split(/[，。、；！？]/).filter(line => line.trim()).map((line, index) => (
+                <p key={index}>{line}</p>
+              ))}
+            </div>
+            
+            {/* 诗名和作者 - 右对齐 */}
+            <div className="text-sm text-gold/80 text-right">
               <p>《{poemData.poem_title}》</p>
               <p>— {poemData.author}</p>
             </div>
+            
             <button
               onClick={() => setPoemData(null)}
               className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all"
