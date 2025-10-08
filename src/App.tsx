@@ -86,12 +86,21 @@ function App() {
     return startTime;
   };
 
-  // 赞赏功能计时器：诗句出现 10 秒后显示爱心按钮
+  // 赞赏功能计时器：根据诗句长度动态调整爱心按钮出现时间（每秒1.5个字符，上限15秒）
   useEffect(() => {
     if (poemData) {
+      // 计算诗句字符数（去除标点符号后的纯文字长度）
+      const pureTextLength = poemData.content.replace(/[，。、；！？\s]/g, '').length;
+      
+      // 每秒3个字符，转换为毫秒，上限15秒
+      const calculatedDuration = (pureTextLength / 3) * 1000;
+      const displayDuration = Math.min(calculatedDuration, 15000); // 最大15秒
+      
+      console.log(`✅ 诗句字符数：${pureTextLength}，爱心按钮将在 ${displayDuration / 1000} 秒后出现`);
+      
       const timer = setTimeout(() => {
         setShowLoveButton(true);
-      }, 10000); // 10 秒
+      }, displayDuration);
 
       return () => clearTimeout(timer);
     } else {
@@ -365,6 +374,19 @@ function App() {
   const handleLoveClick = () => {
     setIsLoved(true);
     setShowQRCode(true);
+  };
+
+  // 处理点击诗句框外部区域
+  const handleOutsideClick = () => {
+    if (showQRCode) {
+      // 如果二维码正在显示，先关闭二维码
+      setShowQRCode(false);
+      console.log('✅ 关闭二维码');
+    } else {
+      // 如果二维码未显示，关闭诗句框
+      setPoemData(null);
+      console.log('✅ 关闭诗句框');
+    }
   };
 
   // AI 调用核心逻辑
@@ -774,7 +796,12 @@ function App() {
       {/* 诗句展示区域（中央） */}
       {poemData && (
         <div className="fixed inset-0 flex items-center justify-center z-20 pointer-events-none">
-          <div className="poem-display bg-black/40 backdrop-blur-md rounded-2xl p-8 max-w-2xl pointer-events-auto">
+          <div 
+            className="poem-display bg-black/40 backdrop-blur-md rounded-2xl p-8 max-w-2xl pointer-events-auto"
+            style={{
+              minWidth: '20rem', // 最小宽度：约10个字符的长度（可自行调整）
+            }}
+          >
             {/* 诗句内容 - 左对齐，一句一行 */}
             <div className="text-2xl text-white mb-4 leading-relaxed text-left">
               {poemData.content.split(/[，。、；！？]/).filter(line => line.trim()).map((line, index) => (
@@ -797,7 +824,7 @@ function App() {
                 关闭
               </button>
               
-              {/* 爱心按钮 - 10秒后显示 */}
+              {/* 爱心按钮 - 根据诗句长度动态显示 */}
               {showLoveButton && (
                 <button
                   onClick={handleLoveClick}
@@ -805,6 +832,13 @@ function App() {
                   style={{
                     transform: isLoved ? 'scale(1.2)' : 'scale(1)',
                     filter: isLoved ? 'drop-shadow(0 0 8px rgba(255, 50, 50, 0.8))' : 'none',
+                    animation: 'loveButtonFadeIn 1.5s ease-out forwards',
+                    border: 'none',
+                    background: 'transparent',
+                    outline: 'none',
+                    boxShadow: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
                   }}
                   title={isLoved ? '感谢支持！' : '喜欢这首诗？'}
                 >
