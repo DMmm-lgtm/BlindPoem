@@ -180,18 +180,18 @@ function App() {
       // 根据层级设置不同的属性（强化三层纵深感）
       const layerConfig = {
         front: { 
-          sizeMin: 3, sizeMax: 7,           // 前景：大而明显（最近层）
-          opacityMin: 0.5, opacityMax: 0.9, // 前景：最亮
+          sizeMin: 1.5, sizeMax: 3.5,       // 前景：缩小50%（原3-7）
+          opacityMin: 0.3, opacityMax: 1.0, // 前景：增大透明度变化幅度（增强闪烁）
           colorR: 255, colorG: 255, colorB: 255, // 前景：纯白色（最亮）
         },
         mid: { 
-          sizeMin: 1.5, sizeMax: 3.5,       // 中景：中等大小
-          opacityMin: 0.2, opacityMax: 0.5, // 中景：中等亮度
+          sizeMin: 1, sizeMax: 2,           // 中景：缩小（原1.5-3.5）
+          opacityMin: 0.1, opacityMax: 0.6, // 中景：增大透明度变化幅度（增强闪烁）
           colorR: 220, colorG: 230, colorB: 255, // 中景：淡蓝白（微弱蓝调）
         },
         back: { 
-          sizeMin: 0.5, sizeMax: 2,         // 背景：最小（远处）
-          opacityMin: 0.1, opacityMax: 0.25, // 背景：最暗
+          sizeMin: 0.5, sizeMax: 1.2,       // 背景：缩小（原0.5-2）
+          opacityMin: 0.05, opacityMax: 0.35, // 背景：增大透明度变化幅度（增强闪烁）
           colorR: 180, colorG: 200, colorB: 255, // 背景：偏蓝（深空感）
         },
       };
@@ -211,7 +211,7 @@ function App() {
         colorB: config.colorB,
         x: (Math.random() * 100) / 100, // 转换为 0-1 的比例
         y: (Math.random() * 100) / 100, // 转换为 0-1 的比例
-        breatheDuration: 20 + Math.random() * 40, // 呼吸周期：20-60秒（缓慢随机）
+        breatheDuration: 8 + Math.random() * 12, // 呼吸周期：8-20秒（加快闪烁，原20-60秒）
         breathePhase: Math.random() * Math.PI * 2, // 呼吸动画随机起始相位
       }));
     };
@@ -288,14 +288,15 @@ function App() {
         ctx.fillStyle = `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity})`;
         ctx.fill();
 
-        // 绘制光晕效果
-        const gradient = ctx.createRadialGradient(x, y, 0, x, y, particle.size * 2);
-        gradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.8})`);
-        gradient.addColorStop(0.5, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.4})`);
+        // 绘制光晕效果（减小光晕范围：从2倍改为1.2倍）
+        const glowRadius = particle.size * 1.2;
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+        gradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.6})`);
+        gradient.addColorStop(0.5, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.3})`);
         gradient.addColorStop(1, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, 0)`);
         ctx.fillStyle = gradient;
         ctx.beginPath();
-        ctx.arc(x, y, particle.size * 2, 0, Math.PI * 2);
+        ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
         ctx.fill();
       });
 
