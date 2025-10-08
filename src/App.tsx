@@ -65,9 +65,7 @@ function App() {
   const [isPoemFadingOut, setIsPoemFadingOut] = useState(false); // 诗句框淡出状态
   const [isQRFadingOut, setIsQRFadingOut] = useState(false);     // 二维码淡出状态
 
-  // 流星效果状态
-  const [meteorParticles, setMeteorParticles] = useState<Set<string>>(new Set()); // 正在变成流星的粒子ID
-  const [particlePositions, setParticlePositions] = useState<Map<string, { left: number; top: number }>>(new Map()); // 粒子位置映射
+  // Canvas 粒子系统不再需要流星效果的状态管理
 
   // 入场诗句
   const welcomeLines = [
@@ -172,8 +170,6 @@ function App() {
 
   // 🌟 三层星空粒子系统（120个粒子）- 使用 useMemo 缓存，避免闪烁
   const particleSequences = useMemo(() => {
-    const animations = ['pulse', 'float', 'twinkle'];
-    
     // 生成指定层级的粒子
     const generateParticles = (
       count: number, 
@@ -181,25 +177,22 @@ function App() {
       baseDelay: number,
       delayRange: number
     ) => {
-      // 根据层级设置不同的属性
+      // 根据层级设置不同的属性（强化三层纵深感）
       const layerConfig = {
         front: { 
-          sizeMin: 2, sizeMax: 6,           // 前景：较大（增加最大值）
-          opacityMin: 0.4, opacityMax: 0.8, // 前景：较亮
-          durationMin: 15, durationMax: 30, // 前景：较快
-          color: 'rgba(255, 255, 255, ',    // 前景：白色
+          sizeMin: 3, sizeMax: 7,           // 前景：大而明显（最近层）
+          opacityMin: 0.5, opacityMax: 0.9, // 前景：最亮
+          colorR: 255, colorG: 255, colorB: 255, // 前景：纯白色（最亮）
         },
         mid: { 
-          sizeMin: 1.5, sizeMax: 4,         // 中景：中等（增加范围）
-          opacityMin: 0.25, opacityMax: 0.5, // 中景：中等亮度
-          durationMin: 30, durationMax: 50, // 中景：中等速度
-          color: 'rgba(200, 220, 255, ',    // 中景：淡蓝白
+          sizeMin: 1.5, sizeMax: 3.5,       // 中景：中等大小
+          opacityMin: 0.2, opacityMax: 0.5, // 中景：中等亮度
+          colorR: 220, colorG: 230, colorB: 255, // 中景：淡蓝白（微弱蓝调）
         },
         back: { 
-          sizeMin: 0.8, sizeMax: 2.5,       // 背景：较小（增加范围）
-          opacityMin: 0.1, opacityMax: 0.3, // 背景：较暗
-          durationMin: 50, durationMax: 80, // 背景：较慢
-          color: 'rgba(150, 180, 255, ',    // 背景：偏蓝
+          sizeMin: 0.5, sizeMax: 2,         // 背景：最小（远处）
+          opacityMin: 0.1, opacityMax: 0.25, // 背景：最暗
+          colorR: 180, colorG: 200, colorB: 255, // 背景：偏蓝（深空感）
         },
       };
       
@@ -207,17 +200,19 @@ function App() {
       
       return Array.from({ length: count }, (_, i) => ({
         id: `${layer}-${baseDelay}-${i}`,
-        randomAnim: animations[Math.floor(Math.random() * animations.length)],
+        layer,
         fadeInDelay: baseDelay + Math.random() * delayRange,
-        duration: config.durationMin + Math.random() * (config.durationMax - config.durationMin),
         size: config.sizeMin + Math.random() * (config.sizeMax - config.sizeMin),
-        opacity: config.opacityMin + Math.random() * (config.opacityMax - config.opacityMin),
-        color: config.color,
-        left: Math.random() * 100,
-        top: Math.random() * 100,
-        animDelay: 0,
+        baseOpacity: config.opacityMin + Math.random() * (config.opacityMax - config.opacityMin),
+        opacityMin: config.opacityMin,
+        opacityMax: config.opacityMax,
+        colorR: config.colorR,
+        colorG: config.colorG,
+        colorB: config.colorB,
+        x: (Math.random() * 100) / 100, // 转换为 0-1 的比例
+        y: (Math.random() * 100) / 100, // 转换为 0-1 的比例
         breatheDuration: 20 + Math.random() * 40, // 呼吸周期：20-60秒（缓慢随机）
-        driftDuration: 10 + Math.random() * 60, // 漂移周期：10-70秒（速度更快，差异更大）
+        breathePhase: Math.random() * Math.PI * 2, // 呼吸动画随机起始相位
       }));
     };
     
@@ -226,84 +221,100 @@ function App() {
     const midLayer = generateParticles(40, 'mid', 1, 4);        // 中景层
     const backLayer = generateParticles(40, 'back', 2, 5);      // 背景层
     
-    // 计算动画延迟
-    [...frontLayer, ...midLayer, ...backLayer].forEach(p => {
-      p.animDelay = p.fadeInDelay + (Math.random() * 5);
-    });
-    
     return { frontLayer, midLayer, backLayer };
   }, []); // 空依赖数组 - 只计算一次
 
-  // 初始化粒子位置映射
+  // Canvas 粒子系统
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const particleAnimationRef = useRef<number>(0);
+  const startTimeRef = useRef<number>(Date.now());
+
+  // Canvas 渲染循环 - 三层粒子呼吸动画
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) return;
+
+    // 设置 Canvas 尺寸为窗口大小
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // 合并所有粒子
     const allParticles = [
-      ...particleSequences.frontLayer,
-      ...particleSequences.midLayer,
       ...particleSequences.backLayer,
+      ...particleSequences.midLayer,
+      ...particleSequences.frontLayer,
     ];
-    
-    const positionsMap = new Map<string, { left: number; top: number }>();
-    allParticles.forEach(particle => {
-      positionsMap.set(particle.id, { left: particle.left, top: particle.top });
-    });
-    
-    setParticlePositions(positionsMap);
+
+    // 渲染循环
+    const render = () => {
+      const currentTime = Date.now();
+      const elapsedTime = (currentTime - startTimeRef.current) / 1000; // 转换为秒
+
+      // 清空画布
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 绘制每个粒子
+      allParticles.forEach((particle) => {
+        // 计算淡入进度（基于 fadeInDelay 和层级）
+        const fadeInStart = particle.fadeInDelay;
+        const fadeInDuration = particle.layer === 'back' ? 3 : particle.layer === 'mid' ? 4 : 5;
+        const fadeInProgress = Math.min(1, Math.max(0, (elapsedTime - fadeInStart) / fadeInDuration));
+
+        // 如果还没开始淡入，跳过
+        if (fadeInProgress === 0) return;
+
+        // 计算呼吸动画的透明度变化（正弦波）
+        const breatheTime = elapsedTime - fadeInStart - fadeInDuration;
+        const breatheCycle = (breatheTime / particle.breatheDuration) * Math.PI * 2 + particle.breathePhase;
+        const breatheOpacity = particle.opacityMin + (particle.opacityMax - particle.opacityMin) * (Math.sin(breatheCycle) * 0.5 + 0.5);
+
+        // 最终透明度 = 淡入进度 × 呼吸透明度
+        const finalOpacity = fadeInProgress * breatheOpacity;
+
+        // 计算粒子位置（像素坐标）
+        const x = particle.x * canvas.width;
+        const y = particle.y * canvas.height;
+
+        // 绘制粒子（圆形）
+        ctx.beginPath();
+        ctx.arc(x, y, particle.size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity})`;
+        ctx.fill();
+
+        // 绘制光晕效果
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, particle.size * 2);
+        gradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.8})`);
+        gradient.addColorStop(0.5, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.4})`);
+        gradient.addColorStop(1, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, 0)`);
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, particle.size * 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      particleAnimationRef.current = requestAnimationFrame(render);
+    };
+
+    // 启动渲染循环
+    render();
+
+    // 清理
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      if (particleAnimationRef.current) {
+        cancelAnimationFrame(particleAnimationRef.current);
+      }
+    };
   }, [particleSequences]);
 
-  // 触发流星效果的通用函数
-  const triggerMeteor = () => {
-    const allParticles = [
-      ...particleSequences.frontLayer,
-      ...particleSequences.midLayer,
-      ...particleSequences.backLayer,
-    ];
-    
-    // 随机选择一个粒子（排除已经是流星的粒子）
-    const availableParticles = allParticles.filter(p => !meteorParticles.has(p.id));
-    
-    if (availableParticles.length > 0) {
-      const randomParticle = availableParticles[Math.floor(Math.random() * availableParticles.length)];
-      
-      // 标记为流星
-      setMeteorParticles(prev => new Set(prev).add(randomParticle.id));
-      
-      console.log(`✨ 流星出现：${randomParticle.id}`);
-      
-      // 2秒后流星消失，重新生成粒子
-      setTimeout(() => {
-        // 生成新的随机位置
-        const newPosition = {
-          left: Math.random() * 100,
-          top: Math.random() * 100,
-        };
-        
-        // 更新粒子位置
-        setParticlePositions(prev => {
-          const newMap = new Map(prev);
-          newMap.set(randomParticle.id, newPosition);
-          return newMap;
-        });
-        
-        // 移除流星标记
-        setMeteorParticles(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(randomParticle.id);
-          return newSet;
-        });
-        
-        console.log(`🌟 流星消失，粒子重生：${randomParticle.id}`);
-      }, 2000);
-    }
-  };
-
-  // 流星效果：平均每分钟2个流星（每30秒触发一次）
-  useEffect(() => {
-    const meteorInterval = setInterval(() => {
-      triggerMeteor();
-    }, 30000); // 每30秒触发一次
-    
-    return () => clearInterval(meteorInterval);
-  }, [particleSequences, meteorParticles]);
+  // 流星效果已整合到 Canvas 渲染系统中
 
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
@@ -515,12 +526,6 @@ function App() {
       setIsPoemFadingOut(true);
       console.log('✅ 关闭按钮：诗句框开始淡出');
       
-      // 50%概率触发流星效果
-      if (Math.random() < 0.5) {
-        triggerMeteor();
-        console.log('🌠 诗句淡出时触发流星');
-      }
-      
       // 0.8秒淡出动画完成后，真正关闭诗句框
       setTimeout(() => {
         setPoemData(null);
@@ -547,12 +552,6 @@ function App() {
       // 如果二维码未显示或已关闭，淡出诗句框
       setIsPoemFadingOut(true);
       console.log('✅ 诗句框开始淡出');
-      
-      // 50%概率触发流星效果
-      if (Math.random() < 0.5) {
-        triggerMeteor();
-        console.log('🌠 诗句淡出时触发流星');
-      }
       
       // 0.8秒淡出动画完成后，真正关闭诗句框
       setTimeout(() => {
@@ -586,12 +585,6 @@ function App() {
       // 然后淡出诗句框
       console.log('✅ 开始淡出诗句框...');
       setIsPoemFadingOut(true);
-      
-      // 50%概率触发流星效果
-      if (Math.random() < 0.5) {
-        triggerMeteor();
-        console.log('🌠 诗句淡出时触发流星');
-      }
       
       // 等待诗句框淡出动画完成（0.8秒）
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -852,101 +845,18 @@ function App() {
         />
       </div>
 
-      {/* 粒子容器 - 分批淡入 */}
-      <div
+      {/* Canvas 粒子系统 - 120个星光粒子 */}
+      <canvas
+        ref={canvasRef}
         style={{
           position: 'fixed',
           inset: 0,
           zIndex: 2,
           pointerEvents: 'none',
-          overflow: 'hidden',
-          contain: 'layout style paint',
+          willChange: 'transform, opacity',
+          backfaceVisibility: 'hidden',
         }}
-      >
-        {/* 背景层粒子（最远，最小最暗，蓝色调）- 3-6秒淡入 */}
-        {particleSequences.backLayer.map((particle) => {
-          const position = particlePositions.get(particle.id) || { left: particle.left, top: particle.top };
-          const isMeteor = meteorParticles.has(particle.id);
-          
-          return (
-            <div
-              key={particle.id}
-              style={{
-                position: 'absolute',
-                left: `${position.left}%`,
-                top: `${position.top}%`,
-                width: `${particle.size}px`,
-                height: `${particle.size}px`,
-                borderRadius: '50%',
-                background: particle.color + particle.opacity + ')',
-                boxShadow: `0 0 ${particle.size * 2}px ${particle.color}0.5)`,
-                opacity: isMeteor ? 1 : 0,
-                willChange: 'transform, opacity',
-                backfaceVisibility: 'hidden',
-                animation: isMeteor 
-                  ? 'meteorFall 2s ease-out forwards'
-                  : `particleBackLayerFadeIn 3s ease-out 3s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${6 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${6 + particle.animDelay}s infinite, particleDrift ${particle.driftDuration}s ease-in-out ${6 + particle.animDelay}s infinite`,
-              }}
-            />
-          );
-        })}
-        
-        {/* 中景层粒子（中等大小和亮度，淡蓝白色）- 4-8秒淡入 */}
-        {particleSequences.midLayer.map((particle) => {
-          const position = particlePositions.get(particle.id) || { left: particle.left, top: particle.top };
-          const isMeteor = meteorParticles.has(particle.id);
-          
-          return (
-            <div
-              key={particle.id}
-              style={{
-                position: 'absolute',
-                left: `${position.left}%`,
-                top: `${position.top}%`,
-                width: `${particle.size}px`,
-                height: `${particle.size}px`,
-                borderRadius: '50%',
-                background: particle.color + particle.opacity + ')',
-                boxShadow: `0 0 ${particle.size * 2.5}px ${particle.color}0.6)`,
-                opacity: isMeteor ? 1 : 0,
-                willChange: 'transform, opacity',
-                backfaceVisibility: 'hidden',
-                animation: isMeteor 
-                  ? 'meteorFall 2s ease-out forwards'
-                  : `particleMidLayerFadeIn 4s ease-out 4s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${8 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${8 + particle.animDelay}s infinite, particleDrift ${particle.driftDuration}s ease-in-out ${8 + particle.animDelay}s infinite`,
-              }}
-            />
-          );
-        })}
-        
-        {/* 前景层粒子（最近，最大最亮，白色）- 5-10秒淡入 */}
-        {particleSequences.frontLayer.map((particle) => {
-          const position = particlePositions.get(particle.id) || { left: particle.left, top: particle.top };
-          const isMeteor = meteorParticles.has(particle.id);
-          
-          return (
-            <div
-              key={particle.id}
-              style={{
-                position: 'absolute',
-                left: `${position.left}%`,
-                top: `${position.top}%`,
-                width: `${particle.size}px`,
-                height: `${particle.size}px`,
-                borderRadius: '50%',
-                background: particle.color + particle.opacity + ')',
-                boxShadow: `0 0 ${particle.size * 3}px ${particle.color}0.8)`,
-                opacity: isMeteor ? 1 : 0,
-                willChange: 'transform, opacity',
-                backfaceVisibility: 'hidden',
-                animation: isMeteor 
-                  ? 'meteorFall 2s ease-out forwards'
-                  : `particleFrontLayerFadeIn 5s ease-out 5s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${10 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${10 + particle.animDelay}s infinite, particleDrift ${particle.driftDuration}s ease-in-out ${10 + particle.animDelay}s infinite`,
-              }}
-            />
-          );
-        })}
-      </div>
+      />
 
       {/* Emoji 按钮区域 - 淡入后物理运动 */}
       <div 

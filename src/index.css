@@ -483,62 +483,68 @@ body {
   }
 }
 
-/* 粒子呼吸效果（缓慢随机，平缓过渡） */
+/* 粒子呼吸效果（明显闪烁，平缓过渡） */
 @keyframes particleBreathe {
   0%, 100% {
     opacity: 1;
   }
   25% {
-    opacity: 0.7;
+    opacity: 0.5;
   }
   50% {
-    opacity: 0.2;
+    opacity: 0.05;
   }
   75% {
-    opacity: 0.7;
+    opacity: 0.5;
   }
 }
 
-/* 粒子随机移动（模拟星空微光漂移） */
+/* 粒子随机移动（模拟星空微光漂移） - 小范围缓慢移动 */
 @keyframes particleDrift {
   0% {
     transform: translate(0, 0) scale(1);
   }
-  8% {
-    transform: translate(120px, -80px) scale(0.95);
+  7% {
+    transform: translate(70px, -56px) scale(0.95);
   }
-  16% {
-    transform: translate(-100px, 140px) scale(0.85);
+  14% {
+    transform: translate(-84px, 76px) scale(0.85);
   }
-  24% {
-    transform: translate(180px, 60px) scale(0.75);
+  21% {
+    transform: translate(96px, 40px) scale(0.75);
   }
-  32% {
-    transform: translate(-150px, -100px) scale(0.8);
+  28% {
+    transform: translate(-100px, -64px) scale(0.8);
   }
-  40% {
-    transform: translate(90px, 130px) scale(0.7);
+  35% {
+    transform: translate(60px, 90px) scale(0.7);
   }
-  48% {
-    transform: translate(-140px, 50px) scale(0.85);
+  42% {
+    transform: translate(-92px, 30px) scale(0.85);
+  }
+  49% {
+    transform: translate(98px, -76px) scale(0.9);
   }
   56% {
-    transform: translate(160px, -90px) scale(0.9);
+    transform: translate(-56px, 80px) scale(0.75);
   }
-  64% {
-    transform: translate(-80px, 110px) scale(0.75);
+  63% {
+    transform: translate(76px, -90px) scale(0.8);
   }
-  72% {
-    transform: translate(110px, -120px) scale(0.8);
+  70% {
+    transform: translate(-90px, -50px) scale(0.9);
   }
-  80% {
-    transform: translate(-120px, -60px) scale(0.9);
+  77% {
+    transform: translate(50px, 70px) scale(0.95);
   }
-  88% {
-    transform: translate(70px, 100px) scale(0.95);
+  84% {
+    transform: translate(-70px, 56px) scale(0.85);
+  }
+  91% {
+    transform: translate(36px, -40px) scale(0.95);
   }
   96% {
-    transform: translate(-40px, -50px) scale(0.98);
+    transform: translate(-24px, -16px) scale(0.98);
   }
   100% {
     transform: translate(0, 0) scale(1);
