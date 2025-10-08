@@ -89,7 +89,7 @@ function App() {
     return charCounts[index] / 1.5; // 每秒1.5个字符
   };
 
-  // 根据字符数计算每句的开始时间（总时长8秒 + 每句1秒delay）
+  // 根据字符数计算每句的开始时间（总时长8秒 + 每句0.5秒delay）
   const getLineStartTime = (index: number): number => {
     const totalChars = charCounts.reduce((sum, count) => sum + count, 0); // 65
     const totalDuration = 8; // 总时长8秒
@@ -98,7 +98,7 @@ function App() {
     for (let i = 0; i < index; i++) {
       startTime += (charCounts[i] / totalChars) * totalDuration;
     }
-    return startTime + index * 1; // 每句增加1秒delay
+    return startTime + index * 0.5; // 每句增加0.5秒delay
   };
 
   // 赞赏功能计时器：根据诗句长度动态调整爱心按钮出现时间（每秒1.5个字符，上限15秒）
@@ -141,28 +141,28 @@ function App() {
 
   // 入场动画时间控制
   useMemo(() => {
-    // 约15秒：8行诗句淡入完成（按字符数分配时间 + 每句1秒delay）
+    // 约11秒：8行诗句淡入完成（按字符数分配时间 + 每句0.5秒delay）
     // 停留2秒，让用户欣赏完整诗句
-    // 17秒：开始淡出阶段
+    // 13秒：开始淡出阶段
     setTimeout(() => {
       setWelcomePhase('sliding');
-    }, 17000);
+    }, 13000);
     
-    // 19.9秒：淡出完成后，底部诗句开始淡入
+    // 15.9秒：淡出完成后，底部诗句开始淡入
     setTimeout(() => {
       setWelcomePhase('complete');
-    }, 19900);
+    }, 15900);
     
-    // 20.0秒：Emoji开始淡入（complete后0.1秒）
+    // 16.0秒：Emoji开始淡入（complete后0.1秒）
     setTimeout(() => {
       setEmojisVisible(true);
-    }, 20000);
+    }, 16000);
     
-    // 25秒：Emoji淡入完成后，提示词开始淡入
+    // 21秒：Emoji淡入完成后，提示词开始淡入
     setTimeout(() => {
       setShowPrompt(true);
       setShowPromptAnimation(true);
-    }, 25000);
+    }, 21000);
     
     // 不再隐藏欢迎屏幕，让入场诗一直保持在背景
     // setTimeout(() => {
@@ -406,7 +406,7 @@ function App() {
         
         setEmojiPhysics(physics);
         setPhysicsEnabled(true);
-      }, 25000); // 20秒emoji开始淡入 + 5秒淡入时长
+      }, 21000); // 16秒emoji开始淡入 + 5秒淡入时长
     }
   }, [physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
 
