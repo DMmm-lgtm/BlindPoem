@@ -789,7 +789,7 @@ function App() {
           inset: 0,
           background: 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
           opacity: 0,
-          animation: 'backgroundFadeIn3s 3s ease-out forwards, dawnGradient 40s ease-in-out 3s infinite',
+          animation: 'backgroundFadeIn3s 3s ease-out forwards, dawnGradient 100s ease-in-out 3s infinite',
           zIndex: 0,
         }}
       />
