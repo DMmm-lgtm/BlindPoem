@@ -230,6 +230,12 @@ function App() {
         y: (Math.random() * 100) / 100, // 转换为 0-1 的比例
         breatheDuration: 8 + Math.random() * 12, // 呼吸周期：8-20秒（加快闪烁，原20-60秒）
         breathePhase: Math.random() * Math.PI * 2, // 呼吸动画随机起始相位
+        // 浮动效果参数（缓慢浮动）
+        driftSpeed: 0.02 + Math.random() * 0.08, // 漂浮速度参数（暂未使用）
+        driftAngle: Math.random() * Math.PI * 2, // 漂浮方向：随机角度
+        driftRadius: 5 + Math.random() * 15, // 漂浮半径：5-20px（粒子围绕原点的最大偏移）
+        driftPhase: Math.random() * Math.PI * 2, // 漂浮动画随机起始相位
+        driftPeriod: 60 + Math.random() * 100, // 漂浮周期：60-160秒（最快约1-2px/秒）
       }));
     };
     
@@ -399,9 +405,15 @@ function App() {
         // 最终透明度 = 淡入进度 × 呼吸透明度
         const finalOpacity = fadeInProgress * breatheOpacity;
 
-        // 计算粒子位置（像素坐标）
-        const x = particle.x * canvas.width;
-        const y = particle.y * canvas.height;
+        // 计算超级缓慢的浮动偏移（圆周运动）
+        const driftTime = elapsedTime - fadeInStart - fadeInDuration;
+        const driftCycle = (driftTime / particle.driftPeriod) * Math.PI * 2 + particle.driftPhase;
+        const driftOffsetX = Math.cos(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
+        const driftOffsetY = Math.sin(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
+
+        // 计算粒子位置（基础位置 + 浮动偏移）
+        const x = particle.x * canvas.width + driftOffsetX;
+        const y = particle.y * canvas.height + driftOffsetY;
 
         // 绘制粒子（圆形）
         ctx.beginPath();
