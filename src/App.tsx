@@ -46,6 +46,7 @@ function App() {
   const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
   const [showWelcome] = useState(true);  // 入场诗一直保持显示
   const [emojisVisible, setEmojisVisible] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(true);  // 控制提示词显示
   
   const [isLoading, setIsLoading] = useState(false);
   const [poemData, setPoemData] = useState<{
@@ -120,6 +121,7 @@ function App() {
   // AI 调用核心逻辑
   const handleEmojiClick = async (keyword: string, mood: string) => {
     console.log('🎭 点击了 Emoji:', { keyword, mood });
+    setShowPrompt(false); // 隐藏提示词
     setIsLoading(true);
     setPoemData(null); // 清空之前的诗句
 
@@ -227,7 +229,7 @@ function App() {
           >
             {welcomeLines.map((line, index) => {
               // 计算位置（更紧凑）
-              const initialTop = 25 + index * 4; // 初始位置：25%, 29%, 33%...（间隔4%）
+              const initialTop = 25 + index * 5; // 初始位置：25%, 29%, 33%...（间隔4%）
               const finalBottom = 2 + index * 2; // 下滑后位置：保持原顺序（第1行在底部2rem，第8行在16rem）
               
               return (
@@ -271,22 +273,50 @@ function App() {
             })}
             
             {/* 操作提示词（下滑完成后显示） */}
-            {welcomePhase === 'complete' && (
+            {welcomePhase === 'complete' && showPrompt && (
               <div
                 style={{
                   position: 'absolute',
                   left: '50%',
                   top: '33%',
                   transform: 'translateX(-50%)',
-                  fontSize: '1.3rem',
+                  fontSize: '2.5rem',
                   fontFamily: 'QianTuBiFeng, sans-serif',
                   color: 'rgba(255, 215, 0, 0.8)',
                   textAlign: 'center',
+                  whiteSpace: 'nowrap',
                   opacity: 0,
                   animation: 'welcomeLineAppear 2s ease-out forwards',
                 }}
               >
                 在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
+                <span className="dots-animation">
+                  <span className="dot1">.</span>
+                  <span className="dot2">.</span>
+                  <span className="dot3">.</span>
+                </span>
+              </div>
+            )}
+            
+            {/* 提示词淡出动画 */}
+            {welcomePhase === 'complete' && !showPrompt && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '33%',
+                  transform: 'translateX(-50%)',
+                  fontSize: '2.5rem',
+                  fontFamily: 'QianTuBiFeng, sans-serif',
+                  color: 'rgba(255, 215, 0, 0.8)',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  opacity: 0.9,
+                  animation: 'promptFadeOut 0.8s ease-out forwards',
+                }}
+              >
+                在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
+                <span>...</span>
               </div>
             )}
           </div>

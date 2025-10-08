@@ -137,6 +137,51 @@
   }
 }
 
+/* 省略号循环动画 */
+.dots-animation {
+  display: inline;
+}
+
+.dots-animation .dot1 {
+  animation: dotFade1 1.5s ease-in-out infinite;
+}
+
+.dots-animation .dot2 {
+  animation: dotFade2 1.5s ease-in-out infinite;
+}
+
+.dots-animation .dot3 {
+  animation: dotFade3 1.5s ease-in-out infinite;
+}
+
+@keyframes dotFade1 {
+  0%, 33% { opacity: 1; }
+  34%, 100% { opacity: 0.3; }
+}
+
+@keyframes dotFade2 {
+  0%, 33% { opacity: 0.3; }
+  34%, 66% { opacity: 1; }
+  67%, 100% { opacity: 0.3; }
+}
+
+@keyframes dotFade3 {
+  0%, 66% { opacity: 0.3; }
+  67%, 100% { opacity: 1; }
+}
+
+/* 提示词淡出动画 */
+@keyframes promptFadeOut {
+  0% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+}
+
 /* Emoji 从上方滑入 */
 @keyframes emojiSlideInTop {
   0% {
