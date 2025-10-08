@@ -228,8 +228,10 @@ function App() {
         colorB: config.colorB,
         x: (Math.random() * 100) / 100, // 转换为 0-1 的比例
         y: (Math.random() * 100) / 100, // 转换为 0-1 的比例
-        breatheDuration: 8 + Math.random() * 12, // 呼吸周期：8-20秒（加快闪烁，原20-60秒）
-        breathePhase: Math.random() * Math.PI * 2, // 呼吸动画随机起始相位
+        // 闪烁效果参数（快速闪烁 + 长时间保持）
+        flashDuration: 0.5 + Math.random() * 1.5, // 闪烁时长：0.5-2秒
+        holdDuration: 20 + Math.random() * 40, // 保持时长：20-60秒
+        flashPhase: Math.random() * 100, // 随机起始相位（秒）
         // 浮动效果参数（缓慢浮动）
         driftSpeed: 0.02 + Math.random() * 0.08, // 漂浮速度参数（暂未使用）
         driftAngle: Math.random() * Math.PI * 2, // 漂浮方向：随机角度
@@ -397,13 +399,25 @@ function App() {
         // 如果还没开始淡入，跳过
         if (fadeInProgress === 0) return;
 
-        // 计算呼吸动画的透明度变化（正弦波）
-        const breatheTime = elapsedTime - fadeInStart - fadeInDuration;
-        const breatheCycle = (breatheTime / particle.breatheDuration) * Math.PI * 2 + particle.breathePhase;
-        const breatheOpacity = particle.opacityMin + (particle.opacityMax - particle.opacityMin) * (Math.sin(breatheCycle) * 0.5 + 0.5);
+        // 计算闪烁动画的透明度变化（快速闪烁 + 长时间保持）
+        const animationTime = elapsedTime - fadeInStart - fadeInDuration + particle.flashPhase;
+        const cycleDuration = particle.flashDuration + particle.holdDuration; // 一个完整循环时长
+        const timeInCycle = animationTime % cycleDuration; // 当前在循环中的时间
+        
+        let flashOpacity;
+        if (timeInCycle < particle.flashDuration) {
+          // 闪烁阶段（0.5-2秒）：快速从最低→最高→最低
+          const flashProgress = timeInCycle / particle.flashDuration; // 0-1
+          // 使用正弦波实现平滑的 最低→最高→最低 变化
+          const sinValue = Math.sin(flashProgress * Math.PI); // 0→1→0
+          flashOpacity = particle.opacityMin + (particle.opacityMax - particle.opacityMin) * sinValue;
+        } else {
+          // 保持阶段（20-60秒）：保持在最低亮度
+          flashOpacity = particle.opacityMin;
+        }
 
-        // 最终透明度 = 淡入进度 × 呼吸透明度
-        const finalOpacity = fadeInProgress * breatheOpacity;
+        // 最终透明度 = 淡入进度 × 闪烁透明度
+        const finalOpacity = fadeInProgress * flashOpacity;
 
         // 计算超级缓慢的浮动偏移（圆周运动）
         const driftTime = elapsedTime - fadeInStart - fadeInDuration;
