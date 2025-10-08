@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { generatePoem } from './lib/geminiClient';
 import { savePoemToDatabase, getRandomPoemFromDatabase } from './lib/poemService';
 import './App.css';
@@ -194,8 +194,23 @@ function App() {
     return EMOJI_MOODS.map(() => 15 + Math.random() * 18);
   }, []);
 
-  // 27个Emoji的固定位置
-  const emojiPositions = useMemo(() => [
+  // Emoji物理系统
+  interface EmojiPhysics {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    rotation: number;
+    rotationSpeed: number;
+  }
+
+  const [emojiPhysics, setEmojiPhysics] = useState<EmojiPhysics[]>([]);
+  const [physicsEnabled, setPhysicsEnabled] = useState(false);
+  const animationFrameRef = useRef<number>(0);
+  const emojiSize = 48;
+
+  // 27个Emoji的初始位置（淡入时使用）
+  const emojiInitialPositions = useMemo(() => [
     { top: '8%', left: '12%' },
     { top: '15%', left: '85%' },
     { top: '22%', left: '25%' },
@@ -224,6 +239,85 @@ function App() {
     { top: '25%', left: '92%' },
     { top: '95%', left: '75%' },
   ], []);
+
+  // 初始化emoji物理属性（淡入完成后启动）
+  useEffect(() => {
+    if (!physicsEnabled && emojiPhysics.length === 0) {
+      // 等待emoji淡入完成后启动物理引擎
+      setTimeout(() => {
+        const physics: EmojiPhysics[] = emojiInitialPositions.map((pos) => {
+          // 从当前位置开始
+          const x = (parseFloat(pos.left) / 100) * window.innerWidth;
+          const y = (parseFloat(pos.top) / 100) * window.innerHeight;
+          
+          // 超级缓慢的随机速度（0.1-0.3 px/frame）
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.1 + Math.random() * 0.2;
+          
+          return {
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            rotation: Math.random() * 360,
+            rotationSpeed: (Math.random() - 0.5) * 0.3, // 超慢旋转
+          };
+        });
+        
+        setEmojiPhysics(physics);
+        setPhysicsEnabled(true);
+      }, 14500); // 13秒emoji开始淡入 + 1.5秒淡入时长
+    }
+  }, [physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
+
+  // 物理引擎 - 超级缓慢移动和反弹
+  useEffect(() => {
+    if (!physicsEnabled || emojiPhysics.length === 0) return;
+
+    const damping = 0.92; // 阻尼系数（碰撞后保留92%速度）
+    
+    const updatePhysics = () => {
+      setEmojiPhysics(prevPhysics => 
+        prevPhysics.map(emoji => {
+          let { x, y, vx, vy, rotation, rotationSpeed } = emoji;
+          
+          // 更新位置
+          x += vx;
+          y += vy;
+          rotation += rotationSpeed;
+          
+          // 边界碰撞检测和反弹
+          if (x <= emojiSize / 2) {
+            x = emojiSize / 2;
+            vx = Math.abs(vx) * damping;
+          } else if (x >= window.innerWidth - emojiSize / 2) {
+            x = window.innerWidth - emojiSize / 2;
+            vx = -Math.abs(vx) * damping;
+          }
+          
+          if (y <= emojiSize / 2) {
+            y = emojiSize / 2;
+            vy = Math.abs(vy) * damping;
+          } else if (y >= window.innerHeight - emojiSize / 2) {
+            y = window.innerHeight - emojiSize / 2;
+            vy = -Math.abs(vy) * damping;
+          }
+          
+          return { ...emoji, x, y, vx, vy, rotation };
+        })
+      );
+      
+      animationFrameRef.current = requestAnimationFrame(updatePhysics);
+    };
+    
+    animationFrameRef.current = requestAnimationFrame(updatePhysics);
+    
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [physicsEnabled, emojiPhysics.length]);
 
   // AI 调用核心逻辑
   const handleEmojiClick = async (keyword: string, mood: string) => {
@@ -556,36 +650,51 @@ function App() {
         ))}
       </div>
 
-      {/* Emoji 按钮区域 - 淡入效果 */}
-      <div className="emoji-container" style={{ position: 'relative', zIndex: 10 }}>
+      {/* Emoji 按钮区域 - 淡入后物理运动 */}
+      <div className="emoji-container" style={{ position: 'fixed', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
         {EMOJI_MOODS.map((item, index) => {
           const glowColor = generateGlowColors[index];
           const glowDuration = emojiGlowDurations[index];
-          const position = emojiPositions[index];
+          const initialPos = emojiInitialPositions[index];
+          const physics = emojiPhysics[index];
+          
+          // 使用物理位置（如果已启动）或初始位置
+          const usePhysics = physicsEnabled && physics;
           
           return (
             <button
               key={index}
               onClick={() => handleEmojiClick(item.keyword, item.mood)}
-              className="cursor-pointer absolute text-5xl"
+              className="cursor-pointer"
               style={{
-                top: position.top,
-                left: position.left,
-                transform: 'translate(-50%, -50%)',
+                position: 'absolute',
+                // 淡入阶段用百分比位置，物理阶段用像素位置
+                ...(usePhysics ? {
+                  left: `${physics.x}px`,
+                  top: `${physics.y}px`,
+                  transform: `translate(-50%, -50%) rotate(${physics.rotation}deg)`,
+                } : {
+                  left: initialPos.left,
+                  top: initialPos.top,
+                  transform: 'translate(-50%, -50%)',
+                }),
+                fontSize: '3rem',
                 border: 'none',
                 background: 'transparent',
+                pointerEvents: 'auto',
                 opacity: emojisVisible ? 1 : 0,
-                filter: `drop-shadow(0 0 20px rgba(${glowColor}, 0.6))`,
+                filter: `drop-shadow(0 0 10px rgba(${glowColor}, 0.4))`,
                 animation: emojisVisible 
                   ? `emojiSimpleFadeIn 1.5s ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out 1.5s infinite`
                   : 'none',
                 transition: 'filter 0.3s ease',
+                willChange: usePhysics ? 'transform, filter' : 'filter',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.filter = `drop-shadow(0 0 35px rgba(${glowColor}, 0.9))`;
+                e.currentTarget.style.filter = `drop-shadow(0 0 20px rgba(${glowColor}, 0.7))`;
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.filter = `drop-shadow(0 0 20px rgba(${glowColor}, 0.6))`;
+                e.currentTarget.style.filter = `drop-shadow(0 0 10px rgba(${glowColor}, 0.4))`;
               }}
               title={item.mood}
             >
@@ -594,17 +703,17 @@ function App() {
           );
         })}
         
-        {/* 动态生成每个emoji的辉光动画 */}
+        {/* 动态生成每个emoji的薄层辉光呼吸动画 */}
         <style>{`
           ${EMOJI_MOODS.map((_, index) => {
             const glowColor = generateGlowColors[index];
             return `
               @keyframes emojiGlow-${index} {
                 0%, 100% {
-                  filter: drop-shadow(0 0 15px rgba(${glowColor}, 0.4));
+                  filter: drop-shadow(0 0 6px rgba(${glowColor}, 0.25));
                 }
                 50% {
-                  filter: drop-shadow(0 0 30px rgba(${glowColor}, 0.8));
+                  filter: drop-shadow(0 0 12px rgba(${glowColor}, 0.45));
                 }
               }
             `;
