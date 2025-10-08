@@ -66,7 +66,12 @@ function App() {
   const [isQRFadingOut, setIsQRFadingOut] = useState(false);     // 二维码淡出状态
 
   // 流星效果状态管理
-  const [meteorParticles, setMeteorParticles] = useState<Map<string, { startTime: number; startX: number; startY: number }>>(new Map());
+  const [meteorParticles, setMeteorParticles] = useState<Map<string, { 
+    startTime: number; 
+    startX: number; 
+    startY: number;
+    direction: number; // 流星方向：0-右下, 1-左下, 2-右上, 3-左上, 4-正下, 5-正右
+  }>>(new Map());
 
   // 入场诗句
   const welcomeLines = [
@@ -289,9 +294,37 @@ function App() {
             const startX = meteorInfo.startX;
             const startY = meteorInfo.startY;
             
-            // 流星终点（右下角外）
-            const endX = canvas.width + 100;
-            const endY = canvas.height + 100;
+            // 根据方向计算流星终点（6种随机路径）
+            let endX, endY;
+            switch (meteorInfo.direction) {
+              case 0: // 右下角
+                endX = canvas.width + 100;
+                endY = canvas.height + 100;
+                break;
+              case 1: // 左下角
+                endX = -100;
+                endY = canvas.height + 100;
+                break;
+              case 2: // 右上角
+                endX = canvas.width + 100;
+                endY = -100;
+                break;
+              case 3: // 左上角
+                endX = -100;
+                endY = -100;
+                break;
+              case 4: // 正下方
+                endX = startX;
+                endY = canvas.height + 100;
+                break;
+              case 5: // 正右方
+                endX = canvas.width + 100;
+                endY = startY;
+                break;
+              default:
+                endX = canvas.width + 100;
+                endY = canvas.height + 100;
+            }
             
             // 当前流星位置（线性插值）
             const currentX = startX + (endX - startX) * meteorProgress;
@@ -617,18 +650,23 @@ function App() {
       const canvas = canvasRef.current;
       
       if (canvas) {
-        // 记录流星起点
+        // 随机选择流星方向（6种路径）
+        const randomDirection = Math.floor(Math.random() * 6);
+        const directionNames = ['右下角', '左下角', '右上角', '左上角', '正下方', '正右方'];
+        
+        // 记录流星起点和方向
         setMeteorParticles(prev => {
           const newMap = new Map(prev);
           newMap.set(randomParticle.id, {
             startTime: Date.now(),
             startX: randomParticle.x * canvas.width,
             startY: randomParticle.y * canvas.height,
+            direction: randomDirection,
           });
           return newMap;
         });
         
-        console.log(`✨ 流星出现：${randomParticle.id}`);
+        console.log(`✨ 流星出现：${randomParticle.id}，方向：${directionNames[randomDirection]}`);
         
         // 2秒后流星消失，粒子重生在新位置
         setTimeout(() => {
