@@ -217,6 +217,7 @@ function App() {
         top: Math.random() * 100,
         animDelay: 0,
         breatheDuration: 20 + Math.random() * 40, // 呼吸周期：20-60秒（缓慢随机）
+        driftDuration: 10 + Math.random() * 60, // 漂移周期：10-70秒（速度更快，差异更大）
       }));
     };
     
@@ -884,7 +885,7 @@ function App() {
                 backfaceVisibility: 'hidden',
                 animation: isMeteor 
                   ? 'meteorFall 2s ease-out forwards'
-                  : `particleBackLayerFadeIn 3s ease-out 3s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${6 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${6 + particle.animDelay}s infinite`,
+                  : `particleBackLayerFadeIn 3s ease-out 3s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${6 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${6 + particle.animDelay}s infinite, particleDrift ${particle.driftDuration}s ease-in-out ${6 + particle.animDelay}s infinite`,
               }}
             />
           );
@@ -912,7 +913,7 @@ function App() {
                 backfaceVisibility: 'hidden',
                 animation: isMeteor 
                   ? 'meteorFall 2s ease-out forwards'
-                  : `particleMidLayerFadeIn 4s ease-out 4s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${8 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${8 + particle.animDelay}s infinite`,
+                  : `particleMidLayerFadeIn 4s ease-out 4s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${8 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${8 + particle.animDelay}s infinite, particleDrift ${particle.driftDuration}s ease-in-out ${8 + particle.animDelay}s infinite`,
               }}
             />
           );
@@ -940,7 +941,7 @@ function App() {
                 backfaceVisibility: 'hidden',
                 animation: isMeteor 
                   ? 'meteorFall 2s ease-out forwards'
-                  : `particleFrontLayerFadeIn 5s ease-out 5s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${10 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${10 + particle.animDelay}s infinite`,
+                  : `particleFrontLayerFadeIn 5s ease-out 5s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${10 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${10 + particle.animDelay}s infinite, particleDrift ${particle.driftDuration}s ease-in-out ${10 + particle.animDelay}s infinite`,
               }}
             />
           );
