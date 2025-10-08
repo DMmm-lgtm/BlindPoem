@@ -5,11 +5,260 @@ body {
   margin: 0;
   padding: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%);
   color: #f5f5f5;
   overflow: hidden;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* 粒子淡入动画 - 页面加载时使用 */
+@keyframes particleFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* 粒子动画 - 脉动效果 */
+@keyframes pulse {
+  0% {
+    opacity: 0.1;
+    transform: scale(0.8) translate(0, 0);
+  }
+  10% {
+    opacity: 0.4;
+    transform: scale(0.9) translate(30px, -15px);
+  }
+  25% {
+    opacity: 0.6;
+    transform: scale(1) translate(80px, -40px);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.2) translate(150px, -80px);
+  }
+  75% {
+    opacity: 0.6;
+    transform: scale(1.1) translate(90px, -50px);
+  }
+  90% {
+    opacity: 0.3;
+    transform: scale(0.9) translate(20px, -10px);
+  }
+  100% {
+    opacity: 0.1;
+    transform: scale(0.8) translate(0, 0);
+  }
+}
+
+/* 粒子动画 - 漂浮旋转 */
+@keyframes float {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.05;
+  }
+  10% {
+    transform: translate(40px, -20px) rotate(18deg);
+    opacity: 0.4;
+  }
+  20% {
+    transform: translate(120px, -60px) rotate(45deg);
+    opacity: 0.7;
+  }
+  40% {
+    transform: translate(180px, -120px) rotate(90deg);
+    opacity: 0.85;
+  }
+  60% {
+    transform: translate(140px, -100px) rotate(135deg);
+    opacity: 0.75;
+  }
+  80% {
+    transform: translate(80px, -50px) rotate(180deg);
+    opacity: 0.5;
+  }
+  90% {
+    transform: translate(30px, -15px) rotate(270deg);
+    opacity: 0.3;
+  }
+  100% {
+    transform: translate(0, 0) rotate(360deg);
+    opacity: 0.05;
+  }
+}
+
+/* 粒子动画 - 闪烁 */
+@keyframes twinkle {
+  0% {
+    opacity: 0.05;
+    transform: scale(0.8) translate(0, 0);
+  }
+  15% {
+    opacity: 0.3;
+    transform: scale(1) translate(30px, -15px);
+  }
+  33% {
+    opacity: 0.6;
+    transform: scale(1.2) translate(60px, -30px);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.5) translate(100px, -50px);
+  }
+  66% {
+    opacity: 0.7;
+    transform: scale(1.3) translate(80px, -40px);
+  }
+  85% {
+    opacity: 0.4;
+    transform: scale(1) translate(40px, -20px);
+  }
+  100% {
+    opacity: 0.05;
+    transform: scale(0.8) translate(0, 0);
+  }
+}
+
+/* 光芒呼吸效果 - 核心光芒 */
+@keyframes glow {
+  0% {
+    opacity: 0.05;
+    transform: translate(-50%, 0) scale(0.85);
+  }
+  10% {
+    opacity: 0.3;
+    transform: translate(-40%, -5px) scale(0.95);
+  }
+  25% {
+    opacity: 0.6;
+    transform: translate(-40%, -10px) scale(1.15);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translate(-50%, -15px) scale(1.3);
+  }
+  75% {
+    opacity: 0.6;
+    transform: translate(-60%, -10px) scale(1.15);
+  }
+  90% {
+    opacity: 0.3;
+    transform: translate(-60%, -5px) scale(0.95);
+  }
+  100% {
+    opacity: 0.05;
+    transform: translate(-50%, 0) scale(0.85);
+  }
+}
+
+/* 光芒呼吸效果 - 第二层 */
+@keyframes glowSlow {
+  0% {
+    opacity: 0.03;
+    transform: translate(-50%, 0) scale(0.9);
+  }
+  12% {
+    opacity: 0.25;
+    transform: translate(-60%, -3px) scale(0.98);
+  }
+  30% {
+    opacity: 0.5;
+    transform: translate(-60%, -7px) scale(1.1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translate(-50%, -12px) scale(1.25);
+  }
+  70% {
+    opacity: 0.5;
+    transform: translate(-40%, -7px) scale(1.1);
+  }
+  88% {
+    opacity: 0.25;
+    transform: translate(-40%, -3px) scale(0.98);
+  }
+  100% {
+    opacity: 0.03;
+    transform: translate(-50%, 0) scale(0.9);
+  }
+}
+
+/* 光芒呼吸效果 - 第三层 */
+@keyframes glowSlowest {
+  0% {
+    opacity: 0.02;
+    transform: translate(-50%, 0) scale(0.95);
+  }
+  15% {
+    opacity: 0.2;
+    transform: translate(-40%, -2px) scale(1);
+  }
+  35% {
+    opacity: 0.4;
+    transform: translate(-40%, -5px) scale(1.1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translate(-50%, -8px) scale(1.2);
+  }
+  65% {
+    opacity: 0.4;
+    transform: translate(-60%, -5px) scale(1.1);
+  }
+  85% {
+    opacity: 0.2;
+    transform: translate(-60%, -2px) scale(1);
+  }
+  100% {
+    opacity: 0.02;
+    transform: translate(-50%, 0) scale(0.95);
+  }
+}
+
+/* 背景颜色呼吸动画 - 深蓝到深紫循环 */
+@keyframes backgroundBreath {
+  0% {
+    background: linear-gradient(180deg, #0a0e27 0%, #1a1a3e 50%, #0a0e27 100%);
+    opacity: 0.3;
+  }
+  5% {
+    background: linear-gradient(180deg, #0a0e27 0%, #1a1a3e 50%, #0a0e27 100%);
+    opacity: 0.8;
+  }
+  15% {
+    background: linear-gradient(180deg, #0e1230 0%, #1e1e48 50%, #0e1230 100%);
+    opacity: 1;
+  }
+  25% {
+    background: linear-gradient(180deg, #121640 0%, #25254e 50%, #121640 100%);
+    opacity: 0.9;
+  }
+  40% {
+    background: linear-gradient(180deg, #161a4e 0%, #2a2a5e 50%, #161a4e 100%);
+    opacity: 1;
+  }
+  55% {
+    background: linear-gradient(180deg, #1a1e5e 0%, #2e2e6e 50%, #1a1e5e 100%);
+    opacity: 0.9;
+  }
+  70% {
+    background: linear-gradient(180deg, #1e2270 0%, #32327e 50%, #1e2270 100%);
+    opacity: 0.85;
+  }
+  85% {
+    background: linear-gradient(180deg, #16184e 0%, #24245e 50%, #16184e 100%);
+    opacity: 0.9;
+  }
+  95% {
+    background: linear-gradient(180deg, #0e1038 0%, #1c1c48 50%, #0e1038 100%);
+    opacity: 0.7;
+  }
+  100% {
+    background: linear-gradient(180deg, #0a0e27 0%, #1a1a3e 50%, #0a0e27 100%);
+    opacity: 0.3;
+  }
 }

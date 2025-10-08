@@ -1,42 +1,74 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+/* 应用容器 - 入场动画 */
+.app-container {
+  animation: appFadeIn 1.5s ease-out;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+@keyframes appFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
   }
-  to {
-    transform: rotate(360deg);
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+/* Emoji 容器 */
+.emoji-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Emoji 按钮 - 呼吸式辉光 */
+.emoji-btn {
+  filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.3));
+  animation: breathe 3s ease-in-out infinite;
+  transition: transform 0.2s ease;
+  will-change: transform, filter;
+}
+
+.emoji-btn:hover {
+  filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.6));
+}
+
+@keyframes breathe {
+  0%, 100% {
+    filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.5));
   }
 }
 
-.card {
-  padding: 2em;
+/* 诗句展示 - 渐入动画 */
+.poem-display {
+  animation: poemReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 40px rgba(255, 215, 0, 0.2);
+  will-change: opacity, transform;
 }
 
-.read-the-docs {
-  color: #888;
+@keyframes poemReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .emoji-btn {
+    font-size: 2.5rem;
+  }
+  
+  .poem-display {
+    max-width: 90vw;
+    padding: 1.5rem;
+  }
+}
+
