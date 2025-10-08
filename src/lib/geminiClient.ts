@@ -29,21 +29,116 @@ export async function generatePoem(
   try {
     console.log('⏳ 开始调用 Gemini API...');
     
-    // 构建提示词
-    const fullPrompt = `你是一位精通中国古典诗词的诗人。请根据"${moodName}"这个心情，从中国古典诗词中选择一句最贴合的诗句（不超过30字）。
+    // 添加随机元素
+    const randomSeed = Date.now();
+    const randomHints = ['多样性', '创新性', '惊喜感', '独特性', '新鲜感', '趣味性'];
+    const randomHint = randomHints[Math.floor(Math.random() * randomHints.length)];
+    
+    // 创建多个 Prompt 模板，随机选择一个
+    const promptTemplates = [
+      // 模板1：中文版（倾向中文诗句）
+      `你是一位精通中国诗词的推荐者。请根据"${moodName}"这个心情，推荐一句诗句。
+
+[Request #${randomSeed}] 本次请注重${randomHint}，每次推荐不同的诗句。
 
 要求：
-1. 必须是真实存在的中国古典诗句
-2. 诗句要与"${moodName}"这个心情高度契合
-3. 返回格式必须是严格的 JSON，不要包含任何 markdown 标记或其他文本
-
-请返回 JSON 格式：
+1. 优先推荐中文诗句（古代诗词、现代诗、当代诗均可）
+2. 诗句要有意境，富有文学性
+3. 可以偶尔推荐英文诗句增加惊喜
+4. 请返回 JSON 格式：
 {
   "content": "诗句内容",
-  "poem_title": "诗名",
+  "poem_title": "作品名称",
   "author": "作者"
-}`;
+}`,
 
+      // 模板2：英文版（倾向英文诗句）
+      `You are an expert poetry recommender. Recommend a line of poetry based on the mood: "${moodName}".
+
+[Request #${randomSeed}] Focus on ${randomHint}, recommend different poems each time.
+
+Requirements:
+1. Prefer English poetry (classical, modern, or contemporary)
+2. Can occasionally recommend Chinese poetry for surprise
+3. The verse should be poetic and literary
+4. Return JSON format:
+{
+  "content": "verse content",
+  "poem_title": "work title",
+  "author": "author name"
+}`,
+
+      // 模板3：现代诗版（倾向现代诗）
+      `你是现代诗歌的鉴赏家。请根据"${moodName}"这个心情，推荐一句现代诗。
+
+[Request #${randomSeed}] 本次请注重${randomHint}。
+
+要求：
+1. 优先推荐20世纪至今的现代诗、当代诗
+2. 可以是中文或英文
+3. 诗句要有现代感、意象丰富
+4. 请返回 JSON 格式：
+{
+  "content": "诗句内容",
+  "poem_title": "作品名称",
+  "author": "作者"
+}`,
+
+      // 模板4：古典诗词版（倾向古代诗词）
+      `你是中国古典诗词专家。请根据"${moodName}"这个心情，推荐一句古典诗词。
+
+[Request #${randomSeed}] 本次请注重${randomHint}。
+
+要求：
+1. 优先推荐唐诗、宋词、元曲等古典诗词
+2. 也可以推荐其他国家的古典诗歌
+3. 诗句要典雅、有韵味
+4. 请返回 JSON 格式：
+{
+  "content": "诗句内容",
+  "poem_title": "作品名称",
+  "author": "作者"
+}`,
+
+      // 模板5：混合版（完全随机）
+      `You are an expert poetry recommender. 请根据"${moodName}"推荐一句诗。
+
+[Request #${randomSeed}] 本次请求请注重${randomHint}，完全自由发挥。
+
+要求：
+1. 可以是任何语言、任何时代的诗句
+2. 可以是严肃的经典诗歌，也可以是轻松的网络文学
+3. 诗句与"${moodName}"的相关性可以很强，也可以完全无关（制造惊喜）
+4. 请返回 JSON 格式：
+{
+  "content": "诗句内容",
+  "poem_title": "作品名称",
+  "author": "作者"
+}`,
+
+      // 模板6：网络文学版（倾向现代流行）
+      `你是网络文学和流行文化的推荐者。请根据"${moodName}"这个心情，推荐一句金句或诗句。
+
+[Request #${randomSeed}] 本次请注重${randomHint}。
+
+要求：
+1. 可以是热门网络小说、歌词、电影台词、网络金句
+2. 也可以是传统诗歌
+3. 要有情感共鸣，朗朗上口
+4. 请返回 JSON 格式：
+{
+  "content": "诗句内容",
+  "poem_title": "作品名称",
+  "author": "作者"
+}`,
+    ];
+
+    // 随机选择一个 Prompt 模板
+    const promptTypeNames = ['中文版', '英文版', '现代诗版', '古典诗词版', '混合版', '网络文学版'];
+    const selectedIndex = Math.floor(Math.random() * promptTemplates.length);
+    const fullPrompt = promptTemplates[selectedIndex];
+    
+    console.log('🎲 随机选择的 Prompt 类型:', promptTypeNames[selectedIndex]);
     console.log('📤 发送提示词:', fullPrompt);
 
     // 使用 REST API 调用（参考 PersonalPage 的成功实现）
@@ -60,7 +155,7 @@ export async function generatePoem(
           }]
         }],
         generationConfig: {
-          temperature: 0.7,
+          temperature: 1.1,  // 提高到 1.1，增加随机性和多样性
           topK: 40,
           topP: 0.95,
           maxOutputTokens: 512,
@@ -81,6 +176,14 @@ export async function generatePoem(
 
     const data = await response.json();
     console.log('📄 完整 API 响应:', data);
+
+    // 🔢 Token 使用统计
+    if (data.usageMetadata) {
+      console.log('💰 Token 使用情况:');
+      console.log('  - 输入 Token:', data.usageMetadata.promptTokenCount);
+      console.log('  - 输出 Token:', data.usageMetadata.candidatesTokenCount);
+      console.log('  - 总计 Token:', data.usageMetadata.totalTokenCount);
+    }
 
     // 解析响应（参考 PersonalPage 的方式）
     if (data.candidates && data.candidates.length > 0) {
