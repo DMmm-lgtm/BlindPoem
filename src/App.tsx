@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { generatePoem } from './lib/geminiClient';
 import { savePoemToDatabase, getRandomPoemFromDatabase } from './lib/poemService';
 import './App.css';
@@ -46,7 +46,8 @@ function App() {
   const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
   const [showWelcome] = useState(true);  // 入场诗一直保持显示
   const [emojisVisible, setEmojisVisible] = useState(false);
-  const [showPrompt, setShowPrompt] = useState(true);  // 控制提示词显示
+  const [showPrompt, setShowPrompt] = useState(false);  // 控制提示词显示（初始为false）
+  const [showPromptAnimation, setShowPromptAnimation] = useState(false);  // 控制提示词淡入动画
   
   const [isLoading, setIsLoading] = useState(false);
   const [poemData, setPoemData] = useState<{
@@ -82,18 +83,28 @@ function App() {
 
   // 入场动画时间控制
   useMemo(() => {
-    // 8秒：8行诗句淡入完成
+    // 8秒：8行诗句淡入完成（按字符数分配时间）
     // 停留2秒，让用户欣赏完整诗句
-    // 10秒：开始下滑动画
+    // 10秒：开始淡出阶段
     setTimeout(() => {
       setWelcomePhase('sliding');
     }, 10000);
     
-    // 10.25秒：诗句开始在底部淡入（取消空白等待期）
+    // 10.25秒：诗句开始在底部淡入
     setTimeout(() => {
       setWelcomePhase('complete');
-      setEmojisVisible(true);
     }, 10250);
+    
+    // 11.4秒：Emoji开始淡入（第8句开始淡出时）
+    setTimeout(() => {
+      setEmojisVisible(true);
+    }, 11400);
+    
+    // 12.9秒：Emoji淡入完成后，提示词开始淡入
+    setTimeout(() => {
+      setShowPrompt(true);
+      setShowPromptAnimation(true);
+    }, 12900);
     
     // 不再隐藏欢迎屏幕，让入场诗一直保持在背景
     // setTimeout(() => {
@@ -163,23 +174,7 @@ function App() {
     return { frontLayer, midLayer, backLayer };
   }, []); // 空依赖数组 - 只计算一次
 
-  // 🎯 Emoji 物理系统 - 碰撞反弹和多彩辉光
-  interface EmojiPhysics {
-    x: number;          // 当前x位置
-    y: number;          // 当前y位置
-    vx: number;         // x速度
-    vy: number;         // y速度
-    rotation: number;   // 旋转角度
-    rotationSpeed: number; // 旋转速度
-    glowColor: string;  // 辉光颜色
-    glowDuration: number; // 辉光周期（15-33秒）
-  }
-
-  const [emojiPhysics, setEmojiPhysics] = useState<EmojiPhysics[]>([]);
-  const animationFrameRef = useRef<number>(0);
-  const emojiSize = 48; // emoji大小（px）
-
-  // 生成多彩辉光颜色
+  // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
     const colors = [
       '255, 100, 100',   // 红色
@@ -194,106 +189,41 @@ function App() {
     return EMOJI_MOODS.map(() => colors[Math.floor(Math.random() * colors.length)]);
   }, []);
 
-  // 初始化emoji物理属性
-  useEffect(() => {
-    if (emojisVisible && emojiPhysics.length === 0) {
-      const physics: EmojiPhysics[] = EMOJI_MOODS.map((_, index) => {
-        // 从屏幕外随机位置开始
-        const side = Math.floor(Math.random() * 4); // 0上, 1右, 2下, 3左
-        let x, y, vx, vy;
-        
-        const speed = 0.3 + Math.random() * 0.5; // 慢速：0.3-0.8 px/frame
-        
-        switch(side) {
-          case 0: // 从上方进入
-            x = Math.random() * window.innerWidth;
-            y = -100;
-            vx = (Math.random() - 0.5) * speed;
-            vy = speed;
-            break;
-          case 1: // 从右侧进入
-            x = window.innerWidth + 100;
-            y = Math.random() * window.innerHeight;
-            vx = -speed;
-            vy = (Math.random() - 0.5) * speed;
-            break;
-          case 2: // 从下方进入
-            x = Math.random() * window.innerWidth;
-            y = window.innerHeight + 100;
-            vx = (Math.random() - 0.5) * speed;
-            vy = -speed;
-            break;
-          default: // 从左侧进入
-            x = -100;
-            y = Math.random() * window.innerHeight;
-            vx = speed;
-            vy = (Math.random() - 0.5) * speed;
-        }
-        
-        return {
-          x,
-          y,
-          vx,
-          vy,
-          rotation: Math.random() * 360,
-          rotationSpeed: (Math.random() - 0.5) * 0.5, // 旋转速度
-          glowColor: generateGlowColors[index],
-          glowDuration: 15 + Math.random() * 18, // 15-33秒
-        };
-      });
-      
-      setEmojiPhysics(physics);
-    }
-  }, [emojisVisible, emojiPhysics.length, generateGlowColors]);
+  // Emoji辉光周期（15-33秒）
+  const emojiGlowDurations = useMemo(() => {
+    return EMOJI_MOODS.map(() => 15 + Math.random() * 18);
+  }, []);
 
-  // 物理引擎 - 更新位置和碰撞检测
-  useEffect(() => {
-    if (!emojisVisible || emojiPhysics.length === 0) return;
-
-    const damping = 0.85; // 阻尼系数（碰撞后速度保留85%）
-    
-    const updatePhysics = () => {
-      setEmojiPhysics(prevPhysics => 
-        prevPhysics.map(emoji => {
-          let { x, y, vx, vy, rotation, rotationSpeed } = emoji;
-          
-          // 更新位置
-          x += vx;
-          y += vy;
-          rotation += rotationSpeed;
-          
-          // 边界碰撞检测和反弹（带阻尼）
-          if (x <= emojiSize / 2) {
-            x = emojiSize / 2;
-            vx = Math.abs(vx) * damping; // 反弹并减速
-          } else if (x >= window.innerWidth - emojiSize / 2) {
-            x = window.innerWidth - emojiSize / 2;
-            vx = -Math.abs(vx) * damping;
-          }
-          
-          if (y <= emojiSize / 2) {
-            y = emojiSize / 2;
-            vy = Math.abs(vy) * damping;
-          } else if (y >= window.innerHeight - emojiSize / 2) {
-            y = window.innerHeight - emojiSize / 2;
-            vy = -Math.abs(vy) * damping;
-          }
-          
-          return { ...emoji, x, y, vx, vy, rotation };
-        })
-      );
-      
-      animationFrameRef.current = requestAnimationFrame(updatePhysics);
-    };
-    
-    animationFrameRef.current = requestAnimationFrame(updatePhysics);
-    
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [emojisVisible, emojiPhysics.length]);
+  // 27个Emoji的固定位置
+  const emojiPositions = useMemo(() => [
+    { top: '8%', left: '12%' },
+    { top: '15%', left: '85%' },
+    { top: '22%', left: '25%' },
+    { top: '18%', left: '50%' },
+    { top: '28%', left: '70%' },
+    { top: '35%', left: '15%' },
+    { top: '32%', left: '88%' },
+    { top: '42%', left: '40%' },
+    { top: '45%', left: '65%' },
+    { top: '38%', left: '8%' },
+    { top: '52%', left: '30%' },
+    { top: '55%', left: '78%' },
+    { top: '48%', left: '92%' },
+    { top: '62%', left: '18%' },
+    { top: '58%', left: '55%' },
+    { top: '65%', left: '45%' },
+    { top: '68%', left: '82%' },
+    { top: '72%', left: '10%' },
+    { top: '75%', left: '35%' },
+    { top: '78%', left: '68%' },
+    { top: '82%', left: '25%' },
+    { top: '85%', left: '88%' },
+    { top: '88%', left: '50%' },
+    { top: '92%', left: '15%' },
+    { top: '12%', left: '62%' },
+    { top: '25%', left: '92%' },
+    { top: '95%', left: '75%' },
+  ], []);
 
   // AI 调用核心逻辑
   const handleEmojiClick = async (keyword: string, mood: string) => {
@@ -404,13 +334,16 @@ function App() {
                       transform: 'translateX(-50%) translateY(-10px)',
                       animation: `welcomeLineAppear 1s ease-out ${getLineStartTime(index)}s forwards`,
                     }),
-                    // 阶段2：所有诗句淡出
+                    // 阶段2：所有诗句逐行淡出（每行延迟0.2秒）
                     ...(welcomePhase === 'sliding' && {
                       top: `${initialTop}%`,  // 保持在原位置
+                      bottom: 'auto',
                       opacity: 0.9,
                       fontSize: '2.5rem',
+                      fontFamily: 'QianTuBiFeng, sans-serif',
+                      color: '#ffd700',
                       transform: 'translateX(-50%)',
-                      animation: `welcomeLineFadeOut 1.5s ease-out ${index * 0.15}s forwards`,
+                      animation: `welcomeLineFadeOut 1.5s ease-out ${index * 0.2}s forwards`,
                     }),
                     // 阶段3：只有第1句和最后1句从底部淡入
                     ...(welcomePhase === 'complete' && shouldKeep && {
@@ -433,8 +366,8 @@ function App() {
               );
             })}
             
-            {/* 操作提示词（下滑完成后显示） */}
-            {welcomePhase === 'complete' && showPrompt && (
+            {/* 操作提示词（emoji淡入完成后显示） */}
+            {showPromptAnimation && showPrompt && (
               <div
                 style={{
                   position: 'absolute',
@@ -460,7 +393,7 @@ function App() {
             )}
             
             {/* 提示词淡出动画 */}
-            {welcomePhase === 'complete' && !showPrompt && (
+            {showPromptAnimation && !showPrompt && (
               <div
                 style={{
                   position: 'absolute',
@@ -623,34 +556,33 @@ function App() {
         ))}
       </div>
 
-      {/* Emoji 按钮区域 - 物理运动系统 */}
-      <div className="emoji-container" style={{ position: 'fixed', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
+      {/* Emoji 按钮区域 - 淡入效果 */}
+      <div className="emoji-container" style={{ position: 'relative', zIndex: 10 }}>
         {EMOJI_MOODS.map((item, index) => {
-          const physics = emojiPhysics[index];
-          if (!physics) return null;
-          
           const glowColor = generateGlowColors[index];
+          const glowDuration = emojiGlowDurations[index];
+          const position = emojiPositions[index];
           
           return (
             <button
               key={index}
               onClick={() => handleEmojiClick(item.keyword, item.mood)}
-              className="cursor-pointer"
+              className="cursor-pointer absolute text-5xl"
               style={{
-                position: 'absolute',
-                left: physics.x,
-                top: physics.y,
-                transform: `translate(-50%, -50%) rotate(${physics.rotation}deg)`,
-                fontSize: '3rem',
+                top: position.top,
+                left: position.left,
+                transform: 'translate(-50%, -50%)',
                 border: 'none',
                 background: 'transparent',
-                pointerEvents: 'auto',
+                opacity: emojisVisible ? 1 : 0,
                 filter: `drop-shadow(0 0 20px rgba(${glowColor}, 0.6))`,
-                animation: `emojiGlow-${index} ${physics.glowDuration}s ease-in-out infinite`,
+                animation: emojisVisible 
+                  ? `emojiSimpleFadeIn 1.5s ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out 1.5s infinite`
+                  : 'none',
                 transition: 'filter 0.3s ease',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.filter = `drop-shadow(0 0 30px rgba(${glowColor}, 0.9))`;
+                e.currentTarget.style.filter = `drop-shadow(0 0 35px rgba(${glowColor}, 0.9))`;
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.filter = `drop-shadow(0 0 20px rgba(${glowColor}, 0.6))`;
