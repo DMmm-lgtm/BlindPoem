@@ -72,6 +72,9 @@ function App() {
     startY: number;
     direction: number; // 流星方向：0-右下, 1-左下, 2-右上, 3-左上, 4-正下, 5-正右
   }>>(new Map());
+  
+  // 粒子位置覆盖（用于流星后在新位置重生）
+  const [particlePositionOverrides, setParticlePositionOverrides] = useState<Map<string, { x: number; y: number }>>(new Map());
 
   // 入场诗句
   const welcomeLines = [
@@ -419,6 +422,11 @@ function App() {
         // 最终透明度 = 淡入进度 × 闪烁透明度
         const finalOpacity = fadeInProgress * flashOpacity;
 
+        // 获取粒子的基础位置（优先使用覆盖位置）
+        const positionOverride = particlePositionOverrides.get(particle.id);
+        const baseX = positionOverride ? positionOverride.x : particle.x;
+        const baseY = positionOverride ? positionOverride.y : particle.y;
+
         // 计算超级缓慢的浮动偏移（圆周运动）
         const driftTime = elapsedTime - fadeInStart - fadeInDuration;
         const driftCycle = (driftTime / particle.driftPeriod) * Math.PI * 2 + particle.driftPhase;
@@ -426,8 +434,8 @@ function App() {
         const driftOffsetY = Math.sin(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
 
         // 计算粒子位置（基础位置 + 浮动偏移）
-        const x = particle.x * canvas.width + driftOffsetX;
-        const y = particle.y * canvas.height + driftOffsetY;
+        const x = baseX * canvas.width + driftOffsetX;
+        const y = baseY * canvas.height + driftOffsetY;
 
         // 绘制粒子（圆形）
         ctx.beginPath();
@@ -460,7 +468,7 @@ function App() {
         cancelAnimationFrame(particleAnimationRef.current);
       }
     };
-  }, [particleSequences, meteorParticles]);
+  }, [particleSequences, meteorParticles, particlePositionOverrides]);
 
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
@@ -635,6 +643,11 @@ function App() {
       const canvas = canvasRef.current;
       
       if (canvas) {
+        // 获取粒子当前位置（优先使用覆盖位置）
+        const positionOverride = particlePositionOverrides.get(randomParticle.id);
+        const currentX = positionOverride ? positionOverride.x : randomParticle.x;
+        const currentY = positionOverride ? positionOverride.y : randomParticle.y;
+        
         // 随机选择流星方向（6种路径）
         const randomDirection = Math.floor(Math.random() * 6);
         const directionNames = ['右下角', '左下角', '右上角', '左上角', '正下方', '正右方'];
@@ -644,8 +657,8 @@ function App() {
           const newMap = new Map(prev);
           newMap.set(randomParticle.id, {
             startTime: Date.now(),
-            startX: randomParticle.x * canvas.width,
-            startY: randomParticle.y * canvas.height,
+            startX: currentX * canvas.width,
+            startY: currentY * canvas.height,
             direction: randomDirection,
           });
           return newMap;
@@ -653,19 +666,34 @@ function App() {
         
         console.log(`✨ 流星出现：${randomParticle.id}，方向：${directionNames[randomDirection]}`);
         
-        // 2秒后流星消失，粒子重生在新位置
+        // 2秒后流星消失，粒子在新随机位置重生
         setTimeout(() => {
+          // 生成新的随机位置（确保与当前位置不同）
+          let newX, newY;
+          do {
+            newX = Math.random();
+            newY = Math.random();
+          } while (Math.abs(newX - currentX) < 0.2 && Math.abs(newY - currentY) < 0.2); // 确保新位置距离当前位置足够远
+          
+          // 更新粒子位置
+          setParticlePositionOverrides(prev => {
+            const newMap = new Map(prev);
+            newMap.set(randomParticle.id, { x: newX, y: newY });
+            return newMap;
+          });
+          
+          // 移除流星标记
           setMeteorParticles(prev => {
             const newMap = new Map(prev);
             newMap.delete(randomParticle.id);
             return newMap;
           });
           
-          console.log(`🌟 流星消失，粒子重生：${randomParticle.id}`);
+          console.log(`🌟 流星消失，粒子在新位置重生：${randomParticle.id}，位置：(${(newX * 100).toFixed(1)}%, ${(newY * 100).toFixed(1)}%)`);
         }, 2000);
       }
     }
-  }, [particleSequences, meteorParticles]);
+  }, [particleSequences, meteorParticles, particlePositionOverrides]);
 
   // 流星效果：定期自动触发（每30秒一次）
   useEffect(() => {
