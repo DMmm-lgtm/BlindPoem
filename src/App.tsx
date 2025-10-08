@@ -65,6 +65,10 @@ function App() {
   const [isPoemFadingOut, setIsPoemFadingOut] = useState(false); // 诗句框淡出状态
   const [isQRFadingOut, setIsQRFadingOut] = useState(false);     // 二维码淡出状态
 
+  // 流星效果状态
+  const [meteorParticles, setMeteorParticles] = useState<Set<string>>(new Set()); // 正在变成流星的粒子ID
+  const [particlePositions, setParticlePositions] = useState<Map<string, { left: number; top: number }>>(new Map()); // 粒子位置映射
+
   // 入场诗句
   const welcomeLines = [
     '在AI时代',
@@ -173,19 +177,19 @@ function App() {
       // 根据层级设置不同的属性
       const layerConfig = {
         front: { 
-          sizeMin: 2, sizeMax: 4,           // 前景：较大
+          sizeMin: 2, sizeMax: 6,           // 前景：较大（增加最大值）
           opacityMin: 0.4, opacityMax: 0.8, // 前景：较亮
           durationMin: 15, durationMax: 30, // 前景：较快
           color: 'rgba(255, 255, 255, ',    // 前景：白色
         },
         mid: { 
-          sizeMin: 1.2, sizeMax: 2.5,       // 中景：中等
+          sizeMin: 1.5, sizeMax: 4,         // 中景：中等（增加范围）
           opacityMin: 0.25, opacityMax: 0.5, // 中景：中等亮度
           durationMin: 30, durationMax: 50, // 中景：中等速度
           color: 'rgba(200, 220, 255, ',    // 中景：淡蓝白
         },
         back: { 
-          sizeMin: 0.5, sizeMax: 1.5,       // 背景：较小
+          sizeMin: 0.8, sizeMax: 2.5,       // 背景：较小（增加范围）
           opacityMin: 0.1, opacityMax: 0.3, // 背景：较暗
           durationMin: 50, durationMax: 80, // 背景：较慢
           color: 'rgba(150, 180, 255, ',    // 背景：偏蓝
@@ -205,6 +209,7 @@ function App() {
         left: Math.random() * 100,
         top: Math.random() * 100,
         animDelay: 0,
+        breatheDuration: 20 + Math.random() * 40, // 呼吸周期：20-60秒（缓慢随机）
       }));
     };
     
@@ -220,6 +225,72 @@ function App() {
     
     return { frontLayer, midLayer, backLayer };
   }, []); // 空依赖数组 - 只计算一次
+
+  // 初始化粒子位置映射
+  useEffect(() => {
+    const allParticles = [
+      ...particleSequences.frontLayer,
+      ...particleSequences.midLayer,
+      ...particleSequences.backLayer,
+    ];
+    
+    const positionsMap = new Map<string, { left: number; top: number }>();
+    allParticles.forEach(particle => {
+      positionsMap.set(particle.id, { left: particle.left, top: particle.top });
+    });
+    
+    setParticlePositions(positionsMap);
+  }, [particleSequences]);
+
+  // 流星效果：平均每分钟2个流星（每30秒触发一次）
+  useEffect(() => {
+    const meteorInterval = setInterval(() => {
+      const allParticles = [
+        ...particleSequences.frontLayer,
+        ...particleSequences.midLayer,
+        ...particleSequences.backLayer,
+      ];
+      
+      // 随机选择一个粒子（排除已经是流星的粒子）
+      const availableParticles = allParticles.filter(p => !meteorParticles.has(p.id));
+      
+      if (availableParticles.length > 0) {
+        const randomParticle = availableParticles[Math.floor(Math.random() * availableParticles.length)];
+        
+        // 标记为流星
+        setMeteorParticles(prev => new Set(prev).add(randomParticle.id));
+        
+        console.log(`✨ 流星出现：${randomParticle.id}`);
+        
+        // 2秒后流星消失，重新生成粒子
+        setTimeout(() => {
+          // 生成新的随机位置
+          const newPosition = {
+            left: Math.random() * 100,
+            top: Math.random() * 100,
+          };
+          
+          // 更新粒子位置
+          setParticlePositions(prev => {
+            const newMap = new Map(prev);
+            newMap.set(randomParticle.id, newPosition);
+            return newMap;
+          });
+          
+          // 移除流星标记
+          setMeteorParticles(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(randomParticle.id);
+            return newSet;
+          });
+          
+          console.log(`🌟 流星消失，粒子重生：${randomParticle.id}`);
+        }, 2000);
+      }
+    }, 30000); // 每30秒触发一次
+    
+    return () => clearInterval(meteorInterval);
+  }, [particleSequences, meteorParticles]);
 
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
@@ -747,67 +818,88 @@ function App() {
         }}
       >
         {/* 背景层粒子（最远，最小最暗，蓝色调）- 3-6秒淡入 */}
-        {particleSequences.backLayer.map((particle) => (
-          <div
-            key={particle.id}
-            style={{
-              position: 'absolute',
-              left: `${particle.left}%`,
-              top: `${particle.top}%`,
-              width: `${particle.size}px`,
-              height: `${particle.size}px`,
-              borderRadius: '50%',
-              background: particle.color + particle.opacity + ')',
-              boxShadow: `0 0 ${particle.size * 2}px ${particle.color}0.5)`,
-              opacity: 0,
-              willChange: 'transform, opacity',
-              backfaceVisibility: 'hidden',
-              animation: `particleBackLayerFadeIn 3s ease-out 3s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${6 + particle.animDelay}s infinite`,
-            }}
-          />
-        ))}
+        {particleSequences.backLayer.map((particle) => {
+          const position = particlePositions.get(particle.id) || { left: particle.left, top: particle.top };
+          const isMeteor = meteorParticles.has(particle.id);
+          
+          return (
+            <div
+              key={particle.id}
+              style={{
+                position: 'absolute',
+                left: `${position.left}%`,
+                top: `${position.top}%`,
+                width: `${particle.size}px`,
+                height: `${particle.size}px`,
+                borderRadius: '50%',
+                background: particle.color + particle.opacity + ')',
+                boxShadow: `0 0 ${particle.size * 2}px ${particle.color}0.5)`,
+                opacity: isMeteor ? 1 : 0,
+                willChange: 'transform, opacity',
+                backfaceVisibility: 'hidden',
+                animation: isMeteor 
+                  ? 'meteorFall 2s ease-out forwards'
+                  : `particleBackLayerFadeIn 3s ease-out 3s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${6 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${6 + particle.animDelay}s infinite`,
+              }}
+            />
+          );
+        })}
         
         {/* 中景层粒子（中等大小和亮度，淡蓝白色）- 4-8秒淡入 */}
-        {particleSequences.midLayer.map((particle) => (
-          <div
-            key={particle.id}
-            style={{
-              position: 'absolute',
-              left: `${particle.left}%`,
-              top: `${particle.top}%`,
-              width: `${particle.size}px`,
-              height: `${particle.size}px`,
-              borderRadius: '50%',
-              background: particle.color + particle.opacity + ')',
-              boxShadow: `0 0 ${particle.size * 2.5}px ${particle.color}0.6)`,
-              opacity: 0,
-              willChange: 'transform, opacity',
-              backfaceVisibility: 'hidden',
-              animation: `particleMidLayerFadeIn 4s ease-out 4s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${8 + particle.animDelay}s infinite`,
-            }}
-          />
-        ))}
+        {particleSequences.midLayer.map((particle) => {
+          const position = particlePositions.get(particle.id) || { left: particle.left, top: particle.top };
+          const isMeteor = meteorParticles.has(particle.id);
+          
+          return (
+            <div
+              key={particle.id}
+              style={{
+                position: 'absolute',
+                left: `${position.left}%`,
+                top: `${position.top}%`,
+                width: `${particle.size}px`,
+                height: `${particle.size}px`,
+                borderRadius: '50%',
+                background: particle.color + particle.opacity + ')',
+                boxShadow: `0 0 ${particle.size * 2.5}px ${particle.color}0.6)`,
+                opacity: isMeteor ? 1 : 0,
+                willChange: 'transform, opacity',
+                backfaceVisibility: 'hidden',
+                animation: isMeteor 
+                  ? 'meteorFall 2s ease-out forwards'
+                  : `particleMidLayerFadeIn 4s ease-out 4s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${8 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${8 + particle.animDelay}s infinite`,
+              }}
+            />
+          );
+        })}
         
         {/* 前景层粒子（最近，最大最亮，白色）- 5-10秒淡入 */}
-        {particleSequences.frontLayer.map((particle) => (
-          <div
-            key={particle.id}
-            style={{
-              position: 'absolute',
-              left: `${particle.left}%`,
-              top: `${particle.top}%`,
-              width: `${particle.size}px`,
-              height: `${particle.size}px`,
-              borderRadius: '50%',
-              background: particle.color + particle.opacity + ')',
-              boxShadow: `0 0 ${particle.size * 3}px ${particle.color}0.8)`,
-              opacity: 0,
-              willChange: 'transform, opacity',
-              backfaceVisibility: 'hidden',
-              animation: `particleFrontLayerFadeIn 5s ease-out 5s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${10 + particle.animDelay}s infinite`,
-            }}
-          />
-        ))}
+        {particleSequences.frontLayer.map((particle) => {
+          const position = particlePositions.get(particle.id) || { left: particle.left, top: particle.top };
+          const isMeteor = meteorParticles.has(particle.id);
+          
+          return (
+            <div
+              key={particle.id}
+              style={{
+                position: 'absolute',
+                left: `${position.left}%`,
+                top: `${position.top}%`,
+                width: `${particle.size}px`,
+                height: `${particle.size}px`,
+                borderRadius: '50%',
+                background: particle.color + particle.opacity + ')',
+                boxShadow: `0 0 ${particle.size * 3}px ${particle.color}0.8)`,
+                opacity: isMeteor ? 1 : 0,
+                willChange: 'transform, opacity',
+                backfaceVisibility: 'hidden',
+                animation: isMeteor 
+                  ? 'meteorFall 2s ease-out forwards'
+                  : `particleFrontLayerFadeIn 5s ease-out 5s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${10 + particle.animDelay}s infinite, particleBreathe ${particle.breatheDuration}s ease-in-out ${10 + particle.animDelay}s infinite`,
+              }}
+            />
+          );
+        })}
       </div>
 
       {/* Emoji 按钮区域 - 淡入后物理运动 */}
