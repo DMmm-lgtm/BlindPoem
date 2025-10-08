@@ -587,48 +587,7 @@ function App() {
             vy = -Math.abs(vy) * damping;
           }
           
-          // 诗句框碰撞检测（如果诗句框存在）
-          if (poemData && !isPoemFadingOut) {
-            // 估算诗句框的位置和大小（居中显示）
-            // 最小宽度 20rem = 320px，最大宽度 42rem = 672px
-            // 高度估算：约 300-400px（根据内容动态调整）
-            const poemBoxWidth = 500; // 估算平均宽度 (约31rem)
-            const poemBoxHeight = 350; // 估算平均高度
-            const poemBoxLeft = (window.innerWidth - poemBoxWidth) / 2;
-            const poemBoxRight = poemBoxLeft + poemBoxWidth;
-            const poemBoxTop = (window.innerHeight - poemBoxHeight) / 2;
-            const poemBoxBottom = poemBoxTop + poemBoxHeight;
-            
-            // 增加一些碰撞缓冲区（让emoji在接近时就反弹）
-            const buffer = emojiSize / 2 + 10;
-            
-            // 检测是否与诗句框碰撞
-            const isCollidingLeft = x >= poemBoxLeft - buffer && x <= poemBoxLeft + buffer && y >= poemBoxTop - buffer && y <= poemBoxBottom + buffer;
-            const isCollidingRight = x >= poemBoxRight - buffer && x <= poemBoxRight + buffer && y >= poemBoxTop - buffer && y <= poemBoxBottom + buffer;
-            const isCollidingTop = y >= poemBoxTop - buffer && y <= poemBoxTop + buffer && x >= poemBoxLeft - buffer && x <= poemBoxRight + buffer;
-            const isCollidingBottom = y >= poemBoxBottom - buffer && y <= poemBoxBottom + buffer && x >= poemBoxLeft - buffer && x <= poemBoxRight + buffer;
-            
-            // 左侧碰撞
-            if (isCollidingLeft) {
-              x = poemBoxLeft - buffer;
-              vx = -Math.abs(vx) * damping;
-            }
-            // 右侧碰撞
-            if (isCollidingRight) {
-              x = poemBoxRight + buffer;
-              vx = Math.abs(vx) * damping;
-            }
-            // 顶部碰撞
-            if (isCollidingTop) {
-              y = poemBoxTop - buffer;
-              vy = -Math.abs(vy) * damping;
-            }
-            // 底部碰撞
-            if (isCollidingBottom) {
-              y = poemBoxBottom + buffer;
-              vy = Math.abs(vy) * damping;
-            }
-          }
+          // 诗句框碰撞检测已取消 - emoji可以穿过诗句框
           
           return { ...emoji, x, y, vx, vy, rotation };
         })
@@ -644,7 +603,7 @@ function App() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [physicsEnabled, emojiPhysics.length, poemData, isPoemFadingOut]);
+  }, [physicsEnabled, emojiPhysics.length]);
 
   // 触发流星效果的通用函数
   const triggerMeteor = useCallback(() => {
