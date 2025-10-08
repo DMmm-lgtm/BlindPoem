@@ -81,12 +81,15 @@ function App() {
 
   // AI 调用核心逻辑
   const handleEmojiClick = async (keyword: string, mood: string) => {
+    console.log('🎭 点击了 Emoji:', { keyword, mood });
     setIsLoading(true);
     setPoemData(null); // 清空之前的诗句
 
     try {
+      console.log('📡 准备调用 Gemini API...');
       // 调用 Gemini API
       const poem = await generatePoem(keyword, mood);
+      console.log('✅ Gemini API 返回成功:', poem);
       
       // 展示诗句
       setPoemData({
@@ -105,9 +108,11 @@ function App() {
 
       console.log('✅ AI 返回成功：', poem);
     } catch (error) {
-      console.error('❌ AI 调用失败，尝试从数据库读取：', error);
+      console.error('❌ AI 调用失败，完整错误信息：', error);
+      console.error('错误类型:', error instanceof Error ? error.message : String(error));
 
       // 容错机制：从数据库随机读取
+      console.log('🔄 尝试从数据库读取备用诗句...');
       const fallbackPoem = await getRandomPoemFromDatabase();
 
       if (fallbackPoem) {
