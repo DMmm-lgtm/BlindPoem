@@ -180,6 +180,18 @@
   }
 }
 
+/* 诗句框淡出动画 */
+@keyframes poemFadeOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
 /* 二维码淡入动画 */
 @keyframes qrCodeFadeIn {
   0% {
@@ -189,6 +201,18 @@
   100% {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 二维码淡出动画 */
+@keyframes qrCodeFadeOut {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
   }
 }
 

@@ -60,6 +60,10 @@ function App() {
   const [showLoveButton, setShowLoveButton] = useState(false);  // 控制爱心按钮显示
   const [isLoved, setIsLoved] = useState(false);                // 控制爱心是否被点击
   const [showQRCode, setShowQRCode] = useState(false);          // 控制二维码显示
+  
+  // 淡出动画状态
+  const [isPoemFadingOut, setIsPoemFadingOut] = useState(false); // 诗句框淡出状态
+  const [isQRFadingOut, setIsQRFadingOut] = useState(false);     // 二维码淡出状态
 
   // 入场诗句
   const welcomeLines = [
@@ -104,10 +108,12 @@ function App() {
 
       return () => clearTimeout(timer);
     } else {
-      // 诗句关闭时，重置所有赞赏状态
+      // 诗句关闭时，重置所有赞赏状态和动画状态
       setShowLoveButton(false);
       setIsLoved(false);
       setShowQRCode(false);
+      setIsPoemFadingOut(false);
+      setIsQRFadingOut(false);
     }
   }, [poemData]);
 
@@ -378,14 +384,28 @@ function App() {
 
   // 处理点击诗句框外部区域
   const handleOutsideClick = () => {
-    if (showQRCode) {
-      // 如果二维码正在显示，先关闭二维码
-      setShowQRCode(false);
-      console.log('✅ 关闭二维码');
-    } else {
-      // 如果二维码未显示，关闭诗句框
-      setPoemData(null);
-      console.log('✅ 关闭诗句框');
+    if (showQRCode && !isQRFadingOut) {
+      // 如果二维码正在显示且未开始淡出，先淡出二维码
+      setIsQRFadingOut(true);
+      console.log('✅ 二维码开始淡出');
+      
+      // 0.5秒淡出动画完成后，真正关闭二维码
+      setTimeout(() => {
+        setShowQRCode(false);
+        setIsQRFadingOut(false);
+        console.log('✅ 二维码已关闭');
+      }, 500);
+    } else if (!isPoemFadingOut) {
+      // 如果二维码未显示或已关闭，淡出诗句框
+      setIsPoemFadingOut(true);
+      console.log('✅ 诗句框开始淡出');
+      
+      // 0.8秒淡出动画完成后，真正关闭诗句框
+      setTimeout(() => {
+        setPoemData(null);
+        setIsPoemFadingOut(false);
+        console.log('✅ 诗句框已关闭');
+      }, 800);
     }
   };
 
@@ -393,8 +413,35 @@ function App() {
   const handleEmojiClick = async (keyword: string, mood: string) => {
     console.log('🎭 点击了 Emoji:', { keyword, mood });
     setShowPrompt(false); // 隐藏提示词
+    
+    // 如果有诗句正在显示，先淡出
+    if (poemData && !isPoemFadingOut) {
+      // 如果二维码正在显示，先淡出二维码
+      if (showQRCode && !isQRFadingOut) {
+        console.log('✅ 检测到二维码，先淡出二维码...');
+        setIsQRFadingOut(true);
+        
+        // 等待二维码淡出动画完成（0.5秒）
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        setShowQRCode(false);
+        setIsQRFadingOut(false);
+        console.log('✅ 二维码已淡出');
+      }
+      
+      // 然后淡出诗句框
+      console.log('✅ 开始淡出诗句框...');
+      setIsPoemFadingOut(true);
+      
+      // 等待诗句框淡出动画完成（0.8秒）
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      setPoemData(null);
+      setIsPoemFadingOut(false);
+      console.log('✅ 诗句框已淡出');
+    }
+    
     setIsLoading(true);
-    setPoemData(null); // 清空之前的诗句
 
     try {
       console.log('📡 准备调用 Gemini API...');
@@ -721,7 +768,7 @@ function App() {
       </div>
 
       {/* Emoji 按钮区域 - 淡入后物理运动 */}
-      <div className="emoji-container" style={{ position: 'fixed', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
+      <div className="emoji-container" style={{ position: 'fixed', inset: 0, zIndex: 30, pointerEvents: 'none' }}>
         {EMOJI_MOODS.map((item, index) => {
           const glowColor = generateGlowColors[index];
           const glowDuration = emojiGlowDurations[index];
@@ -795,12 +842,17 @@ function App() {
 
       {/* 诗句展示区域（中央） */}
       {poemData && (
-        <div className="fixed inset-0 flex items-center justify-center z-20 pointer-events-none">
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-20 pointer-events-auto"
+          onClick={handleOutsideClick}
+        >
           <div 
-            className="poem-display bg-black/40 backdrop-blur-md rounded-2xl p-8 max-w-2xl pointer-events-auto"
+            className="poem-display bg-black/40 backdrop-blur-md rounded-2xl p-8 max-w-2xl"
             style={{
               minWidth: '20rem', // 最小宽度：约10个字符的长度（可自行调整）
+              animation: isPoemFadingOut ? 'poemFadeOut 0.8s ease-out forwards' : 'none',
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* 诗句内容 - 左对齐，一句一行 */}
             <div className="text-2xl text-white mb-4 leading-relaxed text-left">
@@ -857,8 +909,11 @@ function App() {
                 left: '50%',
                 transform: 'translateX(-50%)',
                 marginTop: '2rem',
-                animation: 'qrCodeFadeIn 0.5s ease-out forwards',
+                animation: isQRFadingOut 
+                  ? 'qrCodeFadeOut 0.5s ease-out forwards' 
+                  : 'qrCodeFadeIn 0.5s ease-out forwards',
               }}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="bg-white rounded-xl p-4 shadow-2xl">
                 <img
@@ -877,7 +932,7 @@ function App() {
 
       {/* 加载状态 */}
       {isLoading && (
-        <div className="fixed inset-0 flex items-center justify-center z-30 pointer-events-none">
+        <div className="fixed inset-0 flex items-center justify-center z-40 pointer-events-none">
           <div className="text-gold text-xl animate-pulse">
             诗意生成中...
           </div>
