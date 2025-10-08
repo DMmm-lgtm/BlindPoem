@@ -242,51 +242,56 @@ function App() {
     setParticlePositions(positionsMap);
   }, [particleSequences]);
 
+  // 触发流星效果的通用函数
+  const triggerMeteor = () => {
+    const allParticles = [
+      ...particleSequences.frontLayer,
+      ...particleSequences.midLayer,
+      ...particleSequences.backLayer,
+    ];
+    
+    // 随机选择一个粒子（排除已经是流星的粒子）
+    const availableParticles = allParticles.filter(p => !meteorParticles.has(p.id));
+    
+    if (availableParticles.length > 0) {
+      const randomParticle = availableParticles[Math.floor(Math.random() * availableParticles.length)];
+      
+      // 标记为流星
+      setMeteorParticles(prev => new Set(prev).add(randomParticle.id));
+      
+      console.log(`✨ 流星出现：${randomParticle.id}`);
+      
+      // 2秒后流星消失，重新生成粒子
+      setTimeout(() => {
+        // 生成新的随机位置
+        const newPosition = {
+          left: Math.random() * 100,
+          top: Math.random() * 100,
+        };
+        
+        // 更新粒子位置
+        setParticlePositions(prev => {
+          const newMap = new Map(prev);
+          newMap.set(randomParticle.id, newPosition);
+          return newMap;
+        });
+        
+        // 移除流星标记
+        setMeteorParticles(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(randomParticle.id);
+          return newSet;
+        });
+        
+        console.log(`🌟 流星消失，粒子重生：${randomParticle.id}`);
+      }, 2000);
+    }
+  };
+
   // 流星效果：平均每分钟2个流星（每30秒触发一次）
   useEffect(() => {
     const meteorInterval = setInterval(() => {
-      const allParticles = [
-        ...particleSequences.frontLayer,
-        ...particleSequences.midLayer,
-        ...particleSequences.backLayer,
-      ];
-      
-      // 随机选择一个粒子（排除已经是流星的粒子）
-      const availableParticles = allParticles.filter(p => !meteorParticles.has(p.id));
-      
-      if (availableParticles.length > 0) {
-        const randomParticle = availableParticles[Math.floor(Math.random() * availableParticles.length)];
-        
-        // 标记为流星
-        setMeteorParticles(prev => new Set(prev).add(randomParticle.id));
-        
-        console.log(`✨ 流星出现：${randomParticle.id}`);
-        
-        // 2秒后流星消失，重新生成粒子
-        setTimeout(() => {
-          // 生成新的随机位置
-          const newPosition = {
-            left: Math.random() * 100,
-            top: Math.random() * 100,
-          };
-          
-          // 更新粒子位置
-          setParticlePositions(prev => {
-            const newMap = new Map(prev);
-            newMap.set(randomParticle.id, newPosition);
-            return newMap;
-          });
-          
-          // 移除流星标记
-          setMeteorParticles(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(randomParticle.id);
-            return newSet;
-          });
-          
-          console.log(`🌟 流星消失，粒子重生：${randomParticle.id}`);
-        }, 2000);
-      }
+      triggerMeteor();
     }, 30000); // 每30秒触发一次
     
     return () => clearInterval(meteorInterval);
@@ -496,6 +501,27 @@ function App() {
     setShowQRCode(true);
   };
 
+  // 处理关闭按钮点击
+  const handleCloseClick = () => {
+    if (!isPoemFadingOut) {
+      setIsPoemFadingOut(true);
+      console.log('✅ 关闭按钮：诗句框开始淡出');
+      
+      // 50%概率触发流星效果
+      if (Math.random() < 0.5) {
+        triggerMeteor();
+        console.log('🌠 诗句淡出时触发流星');
+      }
+      
+      // 0.8秒淡出动画完成后，真正关闭诗句框
+      setTimeout(() => {
+        setPoemData(null);
+        setIsPoemFadingOut(false);
+        console.log('✅ 诗句框已关闭');
+      }, 800);
+    }
+  };
+
   // 处理点击诗句框外部区域
   const handleOutsideClick = () => {
     if (showQRCode && !isQRFadingOut) {
@@ -513,6 +539,12 @@ function App() {
       // 如果二维码未显示或已关闭，淡出诗句框
       setIsPoemFadingOut(true);
       console.log('✅ 诗句框开始淡出');
+      
+      // 50%概率触发流星效果
+      if (Math.random() < 0.5) {
+        triggerMeteor();
+        console.log('🌠 诗句淡出时触发流星');
+      }
       
       // 0.8秒淡出动画完成后，真正关闭诗句框
       setTimeout(() => {
@@ -546,6 +578,12 @@ function App() {
       // 然后淡出诗句框
       console.log('✅ 开始淡出诗句框...');
       setIsPoemFadingOut(true);
+      
+      // 50%概率触发流星效果
+      if (Math.random() < 0.5) {
+        triggerMeteor();
+        console.log('🌠 诗句淡出时触发流星');
+      }
       
       // 等待诗句框淡出动画完成（0.8秒）
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -1013,7 +1051,7 @@ function App() {
             {/* 按钮区域 */}
             <div className="mt-4 flex items-center justify-between">
               <button
-                onClick={() => setPoemData(null)}
+                onClick={handleCloseClick}
                 className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all"
               >
                 关闭
