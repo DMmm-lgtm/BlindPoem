@@ -81,9 +81,16 @@ function App() {
     '生活在诗句里',
   ];
 
+  // 每句诗的字符数
+  const charCounts = [5, 11, 11, 6, 6, 18, 6, 6]; // 每句的字符数
+
+  // 计算每行的淡入时长（每3个字符1秒）
+  const getLineFadeInDuration = (index: number): number => {
+    return charCounts[index] / 0.5; // 每3个字符1秒
+  };
+
   // 根据字符数计算每句的开始时间（总时长8秒）
   const getLineStartTime = (index: number): number => {
-    const charCounts = [5, 11, 11, 6, 6, 14, 6, 6]; // 每句的字符数
     const totalChars = charCounts.reduce((sum, count) => sum + count, 0); // 65
     const totalDuration = 8; // 总时长8秒
     
@@ -695,7 +702,7 @@ function App() {
                       top: `${initialTop}%`,
                       opacity: 0,
                       transform: 'translateX(-50%) translateY(-10px)',
-                      animation: `welcomeLineAppear 1s ease-out ${getLineStartTime(index)}s forwards`,
+                      animation: `welcomeLineAppear ${getLineFadeInDuration(index)}s ease-out ${getLineStartTime(index)}s forwards`,
                     }),
                     // 阶段2：所有诗句逐行淡出（每行延迟0.2秒）
                     ...(welcomePhase === 'sliding' && {
