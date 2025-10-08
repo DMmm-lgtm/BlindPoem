@@ -100,11 +100,11 @@ function App() {
       setEmojisVisible(true);
     }, 13000);
     
-    // 14.5秒：Emoji淡入完成后，提示词开始淡入
+    // 18秒：Emoji淡入完成后，提示词开始淡入
     setTimeout(() => {
       setShowPrompt(true);
       setShowPromptAnimation(true);
-    }, 14500);
+    }, 18000);
     
     // 不再隐藏欢迎屏幕，让入场诗一直保持在背景
     // setTimeout(() => {
@@ -266,7 +266,7 @@ function App() {
         
         setEmojiPhysics(physics);
         setPhysicsEnabled(true);
-      }, 14500); // 13秒emoji开始淡入 + 1.5秒淡入时长
+      }, 18000); // 13秒emoji开始淡入 + 5秒淡入时长
     }
   }, [physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
 
@@ -685,7 +685,7 @@ function App() {
                 opacity: emojisVisible ? 1 : 0,
                 filter: `drop-shadow(0 0 10px rgba(${glowColor}, 0.4))`,
                 animation: emojisVisible 
-                  ? `emojiSimpleFadeIn 1.5s ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out 1.5s infinite`
+                  ? `emojiSimpleFadeIn 5s ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out 5s infinite`
                   : 'none',
                 transition: 'filter 0.3s ease',
                 willChange: usePhysics ? 'transform, filter' : 'filter',
