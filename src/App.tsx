@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { generatePoem } from './lib/geminiClient';
 import { savePoemToDatabase, getRandomPoemFromDatabase } from './lib/poemService';
 import './App.css';
@@ -65,7 +65,8 @@ function App() {
   const [isPoemFadingOut, setIsPoemFadingOut] = useState(false); // 诗句框淡出状态
   const [isQRFadingOut, setIsQRFadingOut] = useState(false);     // 二维码淡出状态
 
-  // Canvas 粒子系统不再需要流星效果的状态管理
+  // 流星效果状态管理
+  const [meteorParticles, setMeteorParticles] = useState<Map<string, { startTime: number; startX: number; startY: number }>>(new Map());
 
   // 入场诗句
   const welcomeLines = [
@@ -84,7 +85,7 @@ function App() {
 
   // 计算每行的淡入时长（每秒1.5个字符）
   const getLineFadeInDuration = (index: number): number => {
-    return charCounts[index] / 1.5; // 每秒1.5个字符
+    return charCounts[index] / 2; // 每秒1.5个字符
   };
 
   // 根据字符数计算每句的开始时间（总时长8秒 + 每句0.5秒delay）
@@ -262,6 +263,82 @@ function App() {
 
       // 绘制每个粒子
       allParticles.forEach((particle) => {
+        // 检查是否是流星
+        const meteorInfo = meteorParticles.get(particle.id);
+        
+        if (meteorInfo) {
+          // 绘制流星效果
+          const meteorElapsed = (currentTime - meteorInfo.startTime) / 1000; // 流星经过时间（秒）
+          const meteorDuration = 2; // 流星持续2秒
+          
+          if (meteorElapsed < meteorDuration) {
+            const meteorProgress = meteorElapsed / meteorDuration; // 0-1
+            
+            // 流星起点
+            const startX = meteorInfo.startX;
+            const startY = meteorInfo.startY;
+            
+            // 流星终点（右下角外）
+            const endX = canvas.width + 100;
+            const endY = canvas.height + 100;
+            
+            // 当前流星位置（线性插值）
+            const currentX = startX + (endX - startX) * meteorProgress;
+            const currentY = startY + (endY - startY) * meteorProgress;
+            
+            // 流星透明度（先增强后减弱）
+            const meteorOpacity = meteorProgress < 0.2 
+              ? meteorProgress * 5  // 0-0.2: 快速增强
+              : 1 - (meteorProgress - 0.2) / 0.8; // 0.2-1: 缓慢减弱
+            
+            // 绘制流星拖尾（多个圆形）
+            const trailLength = 8; // 拖尾长度
+            for (let i = 0; i < trailLength; i++) {
+              const trailProgress = i / trailLength;
+              const trailX = currentX - (currentX - startX) * trailProgress * 0.3;
+              const trailY = currentY - (currentY - startY) * trailProgress * 0.3;
+              const trailOpacity = meteorOpacity * (1 - trailProgress) * 0.6;
+              const trailSize = particle.size * (1 + meteorProgress * 2) * (1 - trailProgress * 0.5);
+              
+              ctx.beginPath();
+              ctx.arc(trailX, trailY, trailSize, 0, Math.PI * 2);
+              ctx.fillStyle = `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${trailOpacity})`;
+              ctx.fill();
+              
+              // 拖尾光晕
+              const trailGlowRadius = trailSize * 2;
+              const trailGradient = ctx.createRadialGradient(trailX, trailY, 0, trailX, trailY, trailGlowRadius);
+              trailGradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${trailOpacity * 0.8})`);
+              trailGradient.addColorStop(0.5, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${trailOpacity * 0.4})`);
+              trailGradient.addColorStop(1, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, 0)`);
+              ctx.fillStyle = trailGradient;
+              ctx.beginPath();
+              ctx.arc(trailX, trailY, trailGlowRadius, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            
+            // 绘制流星主体（更亮更大）
+            ctx.beginPath();
+            ctx.arc(currentX, currentY, particle.size * (1 + meteorProgress * 2), 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${meteorOpacity})`;
+            ctx.fill();
+            
+            // 流星主体光晕
+            const meteorGlowRadius = particle.size * (1 + meteorProgress * 2) * 3;
+            const meteorGradient = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, meteorGlowRadius);
+            meteorGradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${meteorOpacity})`);
+            meteorGradient.addColorStop(0.3, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${meteorOpacity * 0.6})`);
+            meteorGradient.addColorStop(1, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, 0)`);
+            ctx.fillStyle = meteorGradient;
+            ctx.beginPath();
+            ctx.arc(currentX, currentY, meteorGlowRadius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          
+          return; // 流星状态下不绘制普通粒子
+        }
+        
+        // 普通粒子绘制
         // 计算淡入进度（基于 fadeInDelay 和层级）
         const fadeInStart = particle.fadeInDelay;
         const fadeInDuration = particle.layer === 'back' ? 3 : particle.layer === 'mid' ? 4 : 5;
@@ -313,9 +390,7 @@ function App() {
         cancelAnimationFrame(particleAnimationRef.current);
       }
     };
-  }, [particleSequences]);
-
-  // 流星效果已整合到 Canvas 渲染系统中
+  }, [particleSequences, meteorParticles]);
 
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
@@ -515,6 +590,58 @@ function App() {
     };
   }, [physicsEnabled, emojiPhysics.length, poemData, isPoemFadingOut]);
 
+  // 触发流星效果的通用函数
+  const triggerMeteor = useCallback(() => {
+    const allParticles = [
+      ...particleSequences.frontLayer,
+      ...particleSequences.midLayer,
+      ...particleSequences.backLayer,
+    ];
+    
+    // 过滤出不是流星的粒子
+    const availableParticles = allParticles.filter(p => !meteorParticles.has(p.id));
+    
+    if (availableParticles.length > 0) {
+      const randomParticle = availableParticles[Math.floor(Math.random() * availableParticles.length)];
+      const canvas = canvasRef.current;
+      
+      if (canvas) {
+        // 记录流星起点
+        setMeteorParticles(prev => {
+          const newMap = new Map(prev);
+          newMap.set(randomParticle.id, {
+            startTime: Date.now(),
+            startX: randomParticle.x * canvas.width,
+            startY: randomParticle.y * canvas.height,
+          });
+          return newMap;
+        });
+        
+        console.log(`✨ 流星出现：${randomParticle.id}`);
+        
+        // 2秒后流星消失，粒子重生在新位置
+        setTimeout(() => {
+          setMeteorParticles(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(randomParticle.id);
+            return newMap;
+          });
+          
+          console.log(`🌟 流星消失，粒子重生：${randomParticle.id}`);
+        }, 2000);
+      }
+    }
+  }, [particleSequences, meteorParticles]);
+
+  // 流星效果：定期自动触发（每30秒一次）
+  useEffect(() => {
+    const meteorInterval = setInterval(() => {
+      triggerMeteor();
+    }, 30000);
+
+    return () => clearInterval(meteorInterval);
+  }, [triggerMeteor]);
+
   // 处理爱心点击
   const handleLoveClick = () => {
     setIsLoved(true);
@@ -526,6 +653,12 @@ function App() {
     if (!isPoemFadingOut) {
       setIsPoemFadingOut(true);
       console.log('✅ 关闭按钮：诗句框开始淡出');
+      
+      // 50%概率触发流星效果
+      if (Math.random() < 0.5) {
+        triggerMeteor();
+        console.log('🌠 诗句淡出时触发流星');
+      }
       
       // 0.8秒淡出动画完成后，真正关闭诗句框
       setTimeout(() => {
@@ -553,6 +686,12 @@ function App() {
       // 如果二维码未显示或已关闭，淡出诗句框
       setIsPoemFadingOut(true);
       console.log('✅ 诗句框开始淡出');
+      
+      // 50%概率触发流星效果
+      if (Math.random() < 0.5) {
+        triggerMeteor();
+        console.log('🌠 诗句淡出时触发流星');
+      }
       
       // 0.8秒淡出动画完成后，真正关闭诗句框
       setTimeout(() => {
@@ -586,6 +725,12 @@ function App() {
       // 然后淡出诗句框
       console.log('✅ 开始淡出诗句框...');
       setIsPoemFadingOut(true);
+      
+      // 50%概率触发流星效果
+      if (Math.random() < 0.5) {
+        triggerMeteor();
+        console.log('🌠 诗句淡出时触发流星');
+      }
       
       // 等待诗句框淡出动画完成（0.8秒）
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -789,7 +934,7 @@ function App() {
           inset: 0,
           background: 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
           opacity: 0,
-          animation: 'backgroundFadeIn3s 3s ease-out forwards, dawnGradient 100s ease-in-out 3s infinite',
+          animation: 'backgroundFadeIn3s 3s ease-out forwards, dawnGradient 40s ease-in-out 3s infinite',
           zIndex: 0,
         }}
       />
