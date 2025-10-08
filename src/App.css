@@ -30,26 +30,7 @@
   height: 100vh;
 }
 
-/* Emoji 按钮 - 呼吸式辉光 */
-.emoji-btn {
-  filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.3));
-  animation: breathe 3s ease-in-out infinite;
-  transition: transform 0.2s ease;
-  will-change: transform, filter;
-}
-
-.emoji-btn:hover {
-  filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.6));
-}
-
-@keyframes breathe {
-  0%, 100% {
-    filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.3));
-  }
-  50% {
-    filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.5));
-  }
-}
+/* Emoji 物理系统 - 辉光效果已通过JS动态生成 */
 
 /* 诗句展示 - 渐入动画 */
 .poem-display {
@@ -182,53 +163,7 @@
   }
 }
 
-/* Emoji 从上方滑入 */
-@keyframes emojiSlideInTop {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -150%) scale(0.5);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-/* Emoji 从右侧滑入 */
-@keyframes emojiSlideInRight {
-  0% {
-    opacity: 0;
-    transform: translate(100%, -50%) scale(0.5);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-/* Emoji 从下方滑入 */
-@keyframes emojiSlideInBottom {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, 100%) scale(0.5);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-/* Emoji 从左侧滑入 */
-@keyframes emojiSlideInLeft {
-  0% {
-    opacity: 0;
-    transform: translate(-200%, -50%) scale(0.5);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
+/* Emoji 物理运动系统 - 动画已通过JavaScript动态生成 */
 
 /* 移动端适配 */
 @media (max-width: 768px) {

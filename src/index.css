@@ -262,3 +262,66 @@ body {
     opacity: 0.3;
   }
 }
+
+/* 背景淡入动画 - 非常缓慢（3秒） */
+@keyframes backgroundFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* 粒子淡入动画 - 非常缓慢（4秒，延迟3秒后开始） */
+@keyframes particlesFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* 黎明渐变动画 - 深邃夜空→紫罗兰黎明→暖金微光（40秒循环） */
+@keyframes dawnGradient {
+  /* 0-25%: 深邃夜空 */
+  0% {
+    background: linear-gradient(180deg, #050812 0%, #0a0e27 50%, #0f1230 100%);
+  }
+  12.5% {
+    background: linear-gradient(180deg, #060915 0%, #0c1030 50%, #121638 100%);
+  }
+  25% {
+    background: linear-gradient(180deg, #080a18 0%, #0e1235 50%, #151a40 100%);
+  }
+  
+  /* 25-50%: 过渡到紫罗兰黎明 */
+  37.5% {
+    background: linear-gradient(180deg, #0d0e25 0%, #1a1845 50%, #281e55 100%);
+  }
+  50% {
+    background: linear-gradient(180deg, #12102d 0%, #261e55 50%, #3a2465 100%);
+  }
+  
+  /* 50-75%: 紫罗兰黎明巅峰 */
+  62.5% {
+    background: linear-gradient(180deg, #181438 0%, #2d2558 50%, #422a68 100%);
+  }
+  
+  /* 75-87.5%: 过渡到暖金微光 */
+  75% {
+    background: linear-gradient(180deg, #1e1840 0%, #332a5d 50%, #4a2f60 100%);
+  }
+  87.5% {
+    background: linear-gradient(180deg, #241c45 0%, #3a2e60 50%, #523258 100%);
+  }
+  
+  /* 87.5-100%: 回到深邃夜空 */
+  93.75% {
+    background: linear-gradient(180deg, #181632 0%, #2a2050 50%, #3a2858 100%);
+  }
+  100% {
+    background: linear-gradient(180deg, #050812 0%, #0a0e27 50%, #0f1230 100%);
+  }
+}

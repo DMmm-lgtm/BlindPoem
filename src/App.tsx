@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { generatePoem } from './lib/geminiClient';
 import { savePoemToDatabase, getRandomPoemFromDatabase } from './lib/poemService';
 import './App.css';
@@ -57,12 +57,12 @@ function App() {
 
   // 入场诗句
   const welcomeLines = [
-    '在AI的时代',
+    '在AI时代',
     '做一件AI做不了的小事',
     '读一句诗  读一首诗',
     '让意识流淌过',
     '让感受激发出',
-    '穿越  翱翔  跋涉  漂浮  ……',
+    '穿越  翱翔  跋涉  漂浮……',
     '沉浸在生活外',
     '生活在诗句里',
   ];
@@ -88,35 +88,199 @@ function App() {
     // }, 23000);
   }, []);
 
-  // 🌟 粒子系统 - 使用 useMemo 缓存，避免闪烁
+  // 🌟 三层星空粒子系统（120个粒子）- 使用 useMemo 缓存，避免闪烁
   const particleSequences = useMemo(() => {
     const animations = ['pulse', 'float', 'twinkle'];
     
-    const generateParticles = (count: number, baseDelay: number, delayRange: number) => {
+    // 生成指定层级的粒子
+    const generateParticles = (
+      count: number, 
+      layer: 'front' | 'mid' | 'back',
+      baseDelay: number,
+      delayRange: number
+    ) => {
+      // 根据层级设置不同的属性
+      const layerConfig = {
+        front: { 
+          sizeMin: 2, sizeMax: 4,           // 前景：较大
+          opacityMin: 0.4, opacityMax: 0.8, // 前景：较亮
+          durationMin: 15, durationMax: 30, // 前景：较快
+          color: 'rgba(255, 255, 255, ',    // 前景：白色
+        },
+        mid: { 
+          sizeMin: 1.2, sizeMax: 2.5,       // 中景：中等
+          opacityMin: 0.25, opacityMax: 0.5, // 中景：中等亮度
+          durationMin: 30, durationMax: 50, // 中景：中等速度
+          color: 'rgba(200, 220, 255, ',    // 中景：淡蓝白
+        },
+        back: { 
+          sizeMin: 0.5, sizeMax: 1.5,       // 背景：较小
+          opacityMin: 0.1, opacityMax: 0.3, // 背景：较暗
+          durationMin: 50, durationMax: 80, // 背景：较慢
+          color: 'rgba(150, 180, 255, ',    // 背景：偏蓝
+        },
+      };
+      
+      const config = layerConfig[layer];
+      
       return Array.from({ length: count }, (_, i) => ({
-        id: `${baseDelay}-${i}`,
+        id: `${layer}-${baseDelay}-${i}`,
         randomAnim: animations[Math.floor(Math.random() * animations.length)],
         fadeInDelay: baseDelay + Math.random() * delayRange,
-        duration: 20 + Math.random() * 40, // 20-60秒
-        size: 0.8 + Math.random() * 2.5,
-        opacity: 0.15 + Math.random() * 0.4,
+        duration: config.durationMin + Math.random() * (config.durationMax - config.durationMin),
+        size: config.sizeMin + Math.random() * (config.sizeMax - config.sizeMin),
+        opacity: config.opacityMin + Math.random() * (config.opacityMax - config.opacityMin),
+        color: config.color,
         left: Math.random() * 100,
         top: Math.random() * 100,
         animDelay: 0,
       }));
     };
     
-    const seq1 = generateParticles(25, 0, 3);      // 0-3秒
-    const seq2 = generateParticles(25, 3, 3);      // 3-6秒
-    const seq3 = generateParticles(30, 6, 4);      // 6-10秒
+    // 三层粒子：前景40个、中景40个、背景40个（共120个）
+    const frontLayer = generateParticles(40, 'front', 0, 3);    // 前景层
+    const midLayer = generateParticles(40, 'mid', 1, 4);        // 中景层
+    const backLayer = generateParticles(40, 'back', 2, 5);      // 背景层
     
     // 计算动画延迟
-    [...seq1, ...seq2, ...seq3].forEach(p => {
+    [...frontLayer, ...midLayer, ...backLayer].forEach(p => {
       p.animDelay = p.fadeInDelay + (Math.random() * 5);
     });
     
-    return { seq1, seq2, seq3 };
+    return { frontLayer, midLayer, backLayer };
   }, []); // 空依赖数组 - 只计算一次
+
+  // 🎯 Emoji 物理系统 - 碰撞反弹和多彩辉光
+  interface EmojiPhysics {
+    x: number;          // 当前x位置
+    y: number;          // 当前y位置
+    vx: number;         // x速度
+    vy: number;         // y速度
+    rotation: number;   // 旋转角度
+    rotationSpeed: number; // 旋转速度
+    glowColor: string;  // 辉光颜色
+    glowDuration: number; // 辉光周期（15-33秒）
+  }
+
+  const [emojiPhysics, setEmojiPhysics] = useState<EmojiPhysics[]>([]);
+  const animationFrameRef = useRef<number>(0);
+  const emojiSize = 48; // emoji大小（px）
+
+  // 生成多彩辉光颜色
+  const generateGlowColors = useMemo(() => {
+    const colors = [
+      '255, 100, 100',   // 红色
+      '255, 150, 100',   // 橙色
+      '255, 215, 0',     // 金色
+      '150, 255, 100',   // 绿色
+      '100, 200, 255',   // 蓝色
+      '200, 100, 255',   // 紫色
+      '255, 100, 200',   // 粉色
+      '100, 255, 255',   // 青色
+    ];
+    return EMOJI_MOODS.map(() => colors[Math.floor(Math.random() * colors.length)]);
+  }, []);
+
+  // 初始化emoji物理属性
+  useEffect(() => {
+    if (emojisVisible && emojiPhysics.length === 0) {
+      const physics: EmojiPhysics[] = EMOJI_MOODS.map((_, index) => {
+        // 从屏幕外随机位置开始
+        const side = Math.floor(Math.random() * 4); // 0上, 1右, 2下, 3左
+        let x, y, vx, vy;
+        
+        const speed = 0.3 + Math.random() * 0.5; // 慢速：0.3-0.8 px/frame
+        
+        switch(side) {
+          case 0: // 从上方进入
+            x = Math.random() * window.innerWidth;
+            y = -100;
+            vx = (Math.random() - 0.5) * speed;
+            vy = speed;
+            break;
+          case 1: // 从右侧进入
+            x = window.innerWidth + 100;
+            y = Math.random() * window.innerHeight;
+            vx = -speed;
+            vy = (Math.random() - 0.5) * speed;
+            break;
+          case 2: // 从下方进入
+            x = Math.random() * window.innerWidth;
+            y = window.innerHeight + 100;
+            vx = (Math.random() - 0.5) * speed;
+            vy = -speed;
+            break;
+          default: // 从左侧进入
+            x = -100;
+            y = Math.random() * window.innerHeight;
+            vx = speed;
+            vy = (Math.random() - 0.5) * speed;
+        }
+        
+        return {
+          x,
+          y,
+          vx,
+          vy,
+          rotation: Math.random() * 360,
+          rotationSpeed: (Math.random() - 0.5) * 0.5, // 旋转速度
+          glowColor: generateGlowColors[index],
+          glowDuration: 15 + Math.random() * 18, // 15-33秒
+        };
+      });
+      
+      setEmojiPhysics(physics);
+    }
+  }, [emojisVisible, emojiPhysics.length, generateGlowColors]);
+
+  // 物理引擎 - 更新位置和碰撞检测
+  useEffect(() => {
+    if (!emojisVisible || emojiPhysics.length === 0) return;
+
+    const damping = 0.85; // 阻尼系数（碰撞后速度保留85%）
+    
+    const updatePhysics = () => {
+      setEmojiPhysics(prevPhysics => 
+        prevPhysics.map(emoji => {
+          let { x, y, vx, vy, rotation, rotationSpeed } = emoji;
+          
+          // 更新位置
+          x += vx;
+          y += vy;
+          rotation += rotationSpeed;
+          
+          // 边界碰撞检测和反弹（带阻尼）
+          if (x <= emojiSize / 2) {
+            x = emojiSize / 2;
+            vx = Math.abs(vx) * damping; // 反弹并减速
+          } else if (x >= window.innerWidth - emojiSize / 2) {
+            x = window.innerWidth - emojiSize / 2;
+            vx = -Math.abs(vx) * damping;
+          }
+          
+          if (y <= emojiSize / 2) {
+            y = emojiSize / 2;
+            vy = Math.abs(vy) * damping;
+          } else if (y >= window.innerHeight - emojiSize / 2) {
+            y = window.innerHeight - emojiSize / 2;
+            vy = -Math.abs(vy) * damping;
+          }
+          
+          return { ...emoji, x, y, vx, vy, rotation };
+        })
+      );
+      
+      animationFrameRef.current = requestAnimationFrame(updatePhysics);
+    };
+    
+    animationFrameRef.current = requestAnimationFrame(updatePhysics);
+    
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [emojisVisible, emojiPhysics.length]);
 
   // AI 调用核心逻辑
   const handleEmojiClick = async (keyword: string, mood: string) => {
@@ -170,36 +334,6 @@ function App() {
     }
   };
 
-  // 27 个 Emoji 的随机分布位置
-  const positions = [
-    { top: '8%', left: '12%' },
-    { top: '15%', left: '85%' },
-    { top: '22%', left: '25%' },
-    { top: '18%', left: '50%' },
-    { top: '28%', left: '70%' },
-    { top: '35%', left: '15%' },
-    { top: '32%', left: '88%' },
-    { top: '42%', left: '40%' },
-    { top: '45%', left: '65%' },
-    { top: '38%', left: '8%' },
-    { top: '52%', left: '30%' },
-    { top: '55%', left: '78%' },
-    { top: '48%', left: '92%' },
-    { top: '62%', left: '18%' },
-    { top: '58%', left: '55%' },
-    { top: '65%', left: '45%' },
-    { top: '68%', left: '82%' },
-    { top: '72%', left: '10%' },
-    { top: '75%', left: '35%' },
-    { top: '78%', left: '68%' },
-    { top: '82%', left: '25%' },
-    { top: '85%', left: '88%' },
-    { top: '88%', left: '50%' },
-    { top: '92%', left: '15%' },
-    { top: '12%', left: '62%' },
-    { top: '25%', left: '92%' },
-    { top: '95%', left: '75%' },
-  ];
 
   return (
     <div className="app-container min-h-screen relative overflow-hidden">
@@ -229,7 +363,7 @@ function App() {
           >
             {welcomeLines.map((line, index) => {
               // 计算位置（更紧凑）
-              const initialTop = 25 + index * 5; // 初始位置：25%, 29%, 33%...（间隔4%）
+              const initialTop = 25 + index * 5; // 初始位置：25%, 29%, 33%...（间隔5%）
               const finalBottom = 2 + index * 2; // 下滑后位置：保持原顺序（第1行在底部2rem，第8行在16rem）
               
               return (
@@ -323,19 +457,20 @@ function App() {
         </div>
       )}
 
-      {/* 背景呼吸层 */}
+      {/* 黎明渐变背景层 - 和入场诗第一句同步淡入 */}
       <div
         style={{
           position: 'fixed',
           inset: 0,
           background: 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
-          animation: 'backgroundBreath 30s ease-in-out infinite',
+          opacity: 0,
+          animation: 'backgroundFadeIn 2s ease-out forwards, dawnGradient 40s ease-in-out 2s infinite',
           zIndex: 0,
         }}
       />
 
-      {/* 光芒层 - 3层不同速度的光芒 */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none', overflow: 'hidden' }}>
+      {/* 光芒层 - 和背景同步淡入 */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none', overflow: 'hidden', opacity: 0, animation: 'backgroundFadeIn 2s ease-out forwards' }}>
         {/* 核心光芒 */}
         <div
           style={{
@@ -347,7 +482,7 @@ function App() {
             borderRadius: '50%',
             background: 'radial-gradient(circle, rgba(255, 215, 0, 0.15) 0%, transparent 70%)',
             filter: 'blur(60px)',
-            animation: 'glow 12s ease-in-out infinite',
+            animation: 'glow 12s ease-in-out 2s infinite',
             willChange: 'transform, opacity',
             backfaceVisibility: 'hidden',
           }}
@@ -363,7 +498,7 @@ function App() {
             borderRadius: '50%',
             background: 'radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%)',
             filter: 'blur(80px)',
-            animation: 'glowSlow 18s ease-in-out infinite',
+            animation: 'glowSlow 18s ease-in-out 2s infinite',
             willChange: 'transform, opacity',
             backfaceVisibility: 'hidden',
           }}
@@ -379,14 +514,14 @@ function App() {
             borderRadius: '50%',
             background: 'radial-gradient(circle, rgba(255, 215, 0, 0.08) 0%, transparent 70%)',
             filter: 'blur(100px)',
-            animation: 'glowSlowest 25s ease-in-out infinite',
+            animation: 'glowSlowest 25s ease-in-out 2s infinite',
             willChange: 'transform, opacity',
             backfaceVisibility: 'hidden',
           }}
         />
       </div>
 
-      {/* 粒子容器 */}
+      {/* 粒子容器 - 背景淡入完成后开始淡入 */}
       <div
         style={{
           position: 'fixed',
@@ -395,12 +530,14 @@ function App() {
           pointerEvents: 'none',
           overflow: 'hidden',
           contain: 'layout style paint',
+          opacity: 0,
+          animation: 'particlesFadeIn 3s ease-out 2s forwards',
         }}
       >
-        {/* 序列1粒子 */}
-        {particleSequences.seq1.map((particle) => (
+        {/* 背景层粒子（最远，最小最暗，蓝色调） */}
+        {particleSequences.backLayer.map((particle) => (
           <div
-            key={`particle-seq1-${particle.id}`}
+            key={particle.id}
             style={{
               position: 'absolute',
               left: `${particle.left}%`,
@@ -408,19 +545,20 @@ function App() {
               width: `${particle.size}px`,
               height: `${particle.size}px`,
               borderRadius: '50%',
-              background: 'rgba(255, 215, 0, 0.8)',
-              boxShadow: `0 0 ${particle.size * 2.5}px rgba(255, 215, 0, 0.6)`,
-              opacity: 0,
+              background: particle.color + particle.opacity + ')',
+              boxShadow: `0 0 ${particle.size * 2}px ${particle.color}0.5)`,
+              opacity: 1,
               willChange: 'transform, opacity',
               backfaceVisibility: 'hidden',
-              animation: `particleFadeIn 2s ease-out ${particle.fadeInDelay}s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
+              animation: `${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
             }}
           />
         ))}
-        {/* 序列2粒子 */}
-        {particleSequences.seq2.map((particle) => (
+        
+        {/* 中景层粒子（中等大小和亮度，淡蓝白色） */}
+        {particleSequences.midLayer.map((particle) => (
           <div
-            key={`particle-seq2-${particle.id}`}
+            key={particle.id}
             style={{
               position: 'absolute',
               left: `${particle.left}%`,
@@ -428,19 +566,20 @@ function App() {
               width: `${particle.size}px`,
               height: `${particle.size}px`,
               borderRadius: '50%',
-              background: 'rgba(255, 215, 0, 0.8)',
-              boxShadow: `0 0 ${particle.size * 2.5}px rgba(255, 215, 0, 0.6)`,
-              opacity: 0,
+              background: particle.color + particle.opacity + ')',
+              boxShadow: `0 0 ${particle.size * 2.5}px ${particle.color}0.6)`,
+              opacity: 1,
               willChange: 'transform, opacity',
               backfaceVisibility: 'hidden',
-              animation: `particleFadeIn 2s ease-out ${particle.fadeInDelay}s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
+              animation: `${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
             }}
           />
         ))}
-        {/* 序列3粒子 */}
-        {particleSequences.seq3.map((particle) => (
+        
+        {/* 前景层粒子（最近，最大最亮，白色） */}
+        {particleSequences.frontLayer.map((particle) => (
           <div
-            key={`particle-seq3-${particle.id}`}
+            key={particle.id}
             style={{
               position: 'absolute',
               left: `${particle.left}%`,
@@ -448,37 +587,48 @@ function App() {
               width: `${particle.size}px`,
               height: `${particle.size}px`,
               borderRadius: '50%',
-              background: 'rgba(255, 215, 0, 0.8)',
-              boxShadow: `0 0 ${particle.size * 2.5}px rgba(255, 215, 0, 0.6)`,
-              opacity: 0,
+              background: particle.color + particle.opacity + ')',
+              boxShadow: `0 0 ${particle.size * 3}px ${particle.color}0.8)`,
+              opacity: 1,
               willChange: 'transform, opacity',
               backfaceVisibility: 'hidden',
-              animation: `particleFadeIn 2s ease-out ${particle.fadeInDelay}s forwards, ${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
+              animation: `${particle.randomAnim} ${particle.duration}s cubic-bezier(0.4, 0, 0.2, 1) ${particle.animDelay}s infinite`,
             }}
           />
         ))}
       </div>
 
-      {/* Emoji 按钮区域 */}
-      <div className="emoji-container" style={{ position: 'relative', zIndex: 10 }}>
+      {/* Emoji 按钮区域 - 物理运动系统 */}
+      <div className="emoji-container" style={{ position: 'fixed', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
         {EMOJI_MOODS.map((item, index) => {
-          // 为每个 Emoji 计算入场方向和延迟
-          const sides = ['top', 'right', 'bottom', 'left'];
-          const side = sides[index % 4];
+          const physics = emojiPhysics[index];
+          if (!physics) return null;
+          
+          const glowColor = generateGlowColors[index];
           
           return (
             <button
               key={index}
               onClick={() => handleEmojiClick(item.keyword, item.mood)}
-              className="emoji-btn absolute text-5xl cursor-pointer hover:scale-110 transition-transform"
+              className="cursor-pointer"
               style={{
-                top: positions[index].top,
-                left: positions[index].left,
-                transform: 'translate(-50%, -50%)',
-                opacity: emojisVisible ? 1 : 0,
-                animation: emojisVisible 
-                  ? `emojiSlideIn${side.charAt(0).toUpperCase() + side.slice(1)} 2s ease-out ${index * 0.1}s forwards`
-                  : 'none',
+                position: 'absolute',
+                left: physics.x,
+                top: physics.y,
+                transform: `translate(-50%, -50%) rotate(${physics.rotation}deg)`,
+                fontSize: '3rem',
+                border: 'none',
+                background: 'transparent',
+                pointerEvents: 'auto',
+                filter: `drop-shadow(0 0 20px rgba(${glowColor}, 0.6))`,
+                animation: `emojiGlow-${index} ${physics.glowDuration}s ease-in-out infinite`,
+                transition: 'filter 0.3s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.filter = `drop-shadow(0 0 30px rgba(${glowColor}, 0.9))`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.filter = `drop-shadow(0 0 20px rgba(${glowColor}, 0.6))`;
               }}
               title={item.mood}
             >
@@ -486,6 +636,23 @@ function App() {
             </button>
           );
         })}
+        
+        {/* 动态生成每个emoji的辉光动画 */}
+        <style>{`
+          ${EMOJI_MOODS.map((_, index) => {
+            const glowColor = generateGlowColors[index];
+            return `
+              @keyframes emojiGlow-${index} {
+                0%, 100% {
+                  filter: drop-shadow(0 0 15px rgba(${glowColor}, 0.4));
+                }
+                50% {
+                  filter: drop-shadow(0 0 30px rgba(${glowColor}, 0.8));
+                }
+              }
+            `;
+          }).join('\n')}
+        `}</style>
       </div>
 
       {/* 诗句展示区域（中央） */}
