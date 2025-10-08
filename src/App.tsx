@@ -44,7 +44,7 @@ const EMOJI_MOODS = [
 function App() {
   // 入场动画状态
   const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome] = useState(true);  // 入场诗一直保持显示
   const [emojisVisible, setEmojisVisible] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
@@ -81,10 +81,10 @@ function App() {
       setEmojisVisible(true);
     }, 19000);
     
-    // 23秒后隐藏欢迎屏幕
-    setTimeout(() => {
-      setShowWelcome(false);
-    }, 23000);
+    // 不再隐藏欢迎屏幕，让入场诗一直保持在背景
+    // setTimeout(() => {
+    //   setShowWelcome(false);
+    // }, 23000);
   }, []);
 
   // 🌟 粒子系统 - 使用 useMemo 缓存，避免闪烁
@@ -207,12 +207,13 @@ function App() {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 100,
-            background: 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
+            zIndex: welcomePhase === 'complete' ? 5 : 100,  // 完成后降到背景上方、emoji下方
+            background: welcomePhase === 'complete' ? 'transparent' : 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            animation: welcomePhase === 'complete' ? 'welcomeFadeOut 3s ease-out forwards' : 'none',
+            pointerEvents: welcomePhase === 'complete' ? 'none' : 'auto',  // 完成后不阻挡交互
+            transition: 'background 1s ease-out',
           }}
         >
           {/* 入场诗句 */}
@@ -236,7 +237,7 @@ function App() {
                   style={{
                     position: 'absolute',
                     left: '50%',
-                    fontSize: '2.0rem',
+                    fontSize: '2.5rem',
                     fontFamily: 'QianTuBiFeng, sans-serif',
                     color: '#ffd700',
                     textAlign: 'center',
