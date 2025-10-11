@@ -152,9 +152,11 @@ function App() {
     const negative = EMOJI_MOODS.slice(55, 90);  // 负面情绪 35个
     const intense = EMOJI_MOODS.slice(90, 100);  // 强烈情绪 10个
     
-    // 根据设备类型选择不同数量（移动端21个，PC端27个）
-    const counts = isMobile 
-      ? { positive: 7, neutral: 4, negative: 7, intense: 3 }  // 移动端：21个
+    // 根据设备类型选择不同数量（性能优化：超小屏12个，移动端18个，PC端27个）
+    const counts = isSmallMobile
+      ? { positive: 4, neutral: 2, negative: 4, intense: 2 }  // 超小屏：12个
+      : isMobile 
+      ? { positive: 6, neutral: 3, negative: 6, intense: 3 }  // 移动端：18个
       : { positive: 9, neutral: 5, negative: 9, intense: 4 }; // PC端：27个
     
     // 从每类中随机选择，保持情绪平衡
@@ -168,13 +170,14 @@ function App() {
     // 再次打乱顺序，避免情绪分组显示
     const final = shuffleArray(selected);
     
-    const totalCount = isMobile ? 21 : 27;
-    console.log(`🎲 本次从100个中随机选择的${totalCount}个 Emoji (${isMobile ? '移动端' : 'PC端'}):`, 
+    const totalCount = isSmallMobile ? 12 : isMobile ? 18 : 27;
+    const deviceType = isSmallMobile ? '超小屏' : isMobile ? '移动端' : 'PC端';
+    console.log(`🎲 本次从100个中随机选择的${totalCount}个 Emoji (${deviceType}):`, 
       final.map(e => `${e.emoji} ${e.mood}`).join(', ')
     );
     
     return final;
-  }, [isMobile]); // 依赖 isMobile - 设备类型变化时重新计算
+  }, [isSmallMobile, isMobile]); // 依赖设备类型 - 设备类型变化时重新计算
 
   // 入场动画状态
   const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
@@ -334,9 +337,9 @@ function App() {
   const particleSequences = useMemo(() => {
     // 根据屏幕尺寸调整粒子数量（移动端性能优化）
     const particleCount = isSmallMobile ? 
-      { front: 12, mid: 10, back: 8 } :   // 超小屏：30个（性能优化）
+      { front: 24, mid: 20, back: 16 } :  // 超小屏：60个
       isMobile ? 
-      { front: 25, mid: 20, back: 15 } :  // 移动端：60个（性能优化）
+      { front: 32, mid: 28, back: 20 } :  // 移动端：80个
       { front: 40, mid: 40, back: 40 };   // PC端：120个（不变）
     
     // 生成指定层级的粒子
@@ -592,11 +595,17 @@ function App() {
         const baseX = positionOverride ? positionOverride.x : particle.x;
         const baseY = positionOverride ? positionOverride.y : particle.y;
 
-        // 计算超级缓慢的浮动偏移（圆周运动）
-        const driftTime = elapsedTime - fadeInStart - fadeInDuration;
-        const driftCycle = (driftTime / particle.driftPeriod) * Math.PI * 2 + particle.driftPhase;
-        const driftOffsetX = Math.cos(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
-        const driftOffsetY = Math.sin(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
+        // 计算浮动偏移（移动端取消移动动效，性能优化）
+        let driftOffsetX = 0;
+        let driftOffsetY = 0;
+        
+        if (!isMobile) {
+          // PC端：保留超级缓慢的浮动偏移（圆周运动）
+          const driftTime = elapsedTime - fadeInStart - fadeInDuration;
+          const driftCycle = (driftTime / particle.driftPeriod) * Math.PI * 2 + particle.driftPhase;
+          driftOffsetX = Math.cos(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
+          driftOffsetY = Math.sin(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
+        }
 
         // 计算粒子位置（基础位置 + 浮动偏移）
         const x = baseX * canvas.width + driftOffsetX;
@@ -633,7 +642,7 @@ function App() {
         cancelAnimationFrame(particleAnimationRef.current);
       }
     };
-  }, [particleSequences, meteorParticles, particlePositionOverrides]);
+  }, [particleSequences, meteorParticles, particlePositionOverrides, isMobile]);
 
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
@@ -840,10 +849,11 @@ function App() {
           return { ...emoji, x, y, vx, vy, rotation };
         });
         
-        // 第二步：检测并处理emoji之间的碰撞
-        for (let i = 0; i < newPhysics.length; i++) {
-          // 跳过被悬停的emoji
-          if (i === hoveredEmojiIndex) continue;
+        // 第二步：检测并处理emoji之间的碰撞（移动端跳过，只保留边界反弹）
+        if (!isMobile) {
+          for (let i = 0; i < newPhysics.length; i++) {
+            // 跳过被悬停的emoji
+            if (i === hoveredEmojiIndex) continue;
           
           for (let j = i + 1; j < newPhysics.length; j++) {
             // 跳过被悬停的emoji
@@ -899,6 +909,7 @@ function App() {
               console.log(`💥 Emoji碰撞: #${i} ↔ #${j}`);
             }
           }
+          }
         }
         
         return newPhysics;
@@ -914,7 +925,7 @@ function App() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [physicsEnabled, emojiPhysics.length, hoveredEmojiIndex]);
+  }, [physicsEnabled, emojiPhysics.length, hoveredEmojiIndex, isMobile]);
 
   // 触发流星效果的通用函数
   const triggerMeteor = useCallback(() => {
