@@ -1630,7 +1630,7 @@ function App() {
               fontSize: isSmallMobile ? '1.4rem' : isMobile ? '1.75rem' : '1.5rem'
             }}
           >
-            诗意生成中...
+            诗句正在向你跑来...
           </div>
         </div>
       )}

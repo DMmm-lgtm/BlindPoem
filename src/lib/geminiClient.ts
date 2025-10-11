@@ -26,8 +26,15 @@ export async function generatePoem(
 ): Promise<PoemResponse> {
   console.log(`🎯 生成诗句 - 关键词: ${keyword}, 心情: ${moodName}`);
 
+  // 创建超时控制器（12秒超时）
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    console.log('⏱️ API 请求超时（12秒），将从数据库读取备用诗句');
+  }, 12000);
+
   try {
-    console.log('⏳ 开始调用 Gemini API...');
+    console.log('⏳ 开始调用 Gemini API（12秒超时）...');
     
     // 添加随机元素
     const randomSeed = Date.now();
@@ -37,7 +44,7 @@ export async function generatePoem(
     // 创建多个 Prompt 模板，随机选择一个
     const promptTemplates = [
       // 模板1：中文版（倾向中文诗句）
-      `你是一位精通中国诗词的推荐者。请根据"${moodName}"这个心情，推荐一句诗句。
+      `你是一位精通中国诗词的推荐者。请根据"${moodName}"这个情绪，推荐一句诗句。
 
 [Request #${randomSeed}] 本次请注重${randomHint}，每次推荐不同的诗句。
 
@@ -69,7 +76,7 @@ Requirements:
 }`,
 
       // 模板3：现代诗版（倾向现代诗）
-      `你是现代诗歌的鉴赏家。请根据"${moodName}"这个心情，推荐一句现代诗。
+      `你是现代诗歌的鉴赏家。请根据"${moodName}"这个情绪，推荐一句现代诗。
 
 [Request #${randomSeed}] 本次请注重${randomHint}。
 
@@ -115,26 +122,10 @@ Requirements:
   "poem_title": "作品名称",
   "author": "作者"
 }`,
-
-      // 模板6：网络文学版（倾向现代流行）
-      `你是网络文学和流行文化的推荐者。请根据"${moodName}"这个心情，推荐一句金句或诗句。
-
-[Request #${randomSeed}] 本次请注重${randomHint}。
-
-要求：
-1. 可以是热门网络小说、歌词、电影台词、网络金句
-2. 也可以是传统诗歌
-3. 要有情感共鸣，朗朗上口
-4. 请返回 JSON 格式：
-{
-  "content": "诗句内容",
-  "poem_title": "作品名称",
-  "author": "作者"
-}`,
     ];
 
     // 随机选择一个 Prompt 模板
-    const promptTypeNames = ['中文版', '英文版', '现代诗版', '古典诗词版', '混合版', '网络文学版'];
+    const promptTypeNames = ['中文版', '英文版', '现代诗版', '古典诗词版', '混合版'];
     const selectedIndex = Math.floor(Math.random() * promptTemplates.length);
     const fullPrompt = promptTemplates[selectedIndex];
     
@@ -163,9 +154,11 @@ Requirements:
             thinkingBudget: 0  // 禁用思考功能，加快响应
           }
         }
-      })
+      }),
+      signal: controller.signal  // 添加超时控制信号
     });
 
+    clearTimeout(timeoutId);  // 请求成功，清除超时定时器
     console.log('📥 收到响应，状态码:', response.status);
 
     if (!response.ok) {
@@ -220,6 +213,14 @@ Requirements:
     
     throw new Error('无法解析 AI 响应');
   } catch (error) {
+    clearTimeout(timeoutId);  // 确保清除定时器
+    
+    // 检查是否是超时错误
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('❌ Gemini API 请求超时（12秒）');
+      throw new Error('API_TIMEOUT');  // 抛出特殊标记，用于触发fallback
+    }
+    
     console.error('❌ Gemini API 调用失败：', error);
     throw error;
   }
