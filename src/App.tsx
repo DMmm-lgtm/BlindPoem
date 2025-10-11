@@ -269,31 +269,6 @@ function App() {
     }
   }, [showQRCode]);
 
-  // 🎯 跳过入场动画功能
-  const skipWelcomeAnimation = useCallback(() => {
-    // 只在入场诗淡入或淡出阶段可以跳过
-    if (welcomePhase === 'lines' || welcomePhase === 'sliding') {
-      console.log('⏭️ 用户点击跳过入场动画');
-      
-      // 清除所有入场动画定时器
-      welcomeTimersRef.current.forEach(timer => clearTimeout(timer));
-      welcomeTimersRef.current = [];
-      
-      // 直接跳转到底部诗句淡入阶段
-      setWelcomePhase('complete');
-      
-      // 立即触发Emoji淡入
-      setEmojisVisible(true);
-      
-      // Emoji淡入3秒后触发提示词
-      const promptTimer = window.setTimeout(() => {
-        setShowPrompt(true);
-        setShowPromptAnimation(true);
-      }, 3000);
-      welcomeTimersRef.current.push(promptTimer);
-    }
-  }, [welcomePhase]);
-
   // 入场动画时间控制
   useMemo(() => {
     // 约11秒：8行诗句淡入完成（按字符数分配时间 + 每句0.5秒delay）
@@ -653,6 +628,7 @@ function App() {
 
   const [emojiPhysics, setEmojiPhysics] = useState<EmojiPhysics[]>([]);
   const [physicsEnabled, setPhysicsEnabled] = useState(false);
+  const [hoveredEmojiIndex, setHoveredEmojiIndex] = useState<number | null>(null); // 悬停的emoji索引
   const animationFrameRef = useRef<number>(0);
   const emojiSize = 48;
 
@@ -692,6 +668,54 @@ function App() {
     return shuffleArray(allPositions);
   }, []);
 
+  // 🎯 跳过入场动画功能
+  const skipWelcomeAnimation = useCallback(() => {
+    // 只在入场诗淡入或淡出阶段可以跳过
+    if (welcomePhase === 'lines' || welcomePhase === 'sliding') {
+      console.log('⏭️ 用户点击跳过入场动画');
+      
+      // 清除所有入场动画定时器
+      welcomeTimersRef.current.forEach(timer => clearTimeout(timer));
+      welcomeTimersRef.current = [];
+      
+      // 直接跳转到底部诗句淡入阶段
+      setWelcomePhase('complete');
+      
+      // 立即触发Emoji淡入
+      setEmojisVisible(true);
+      
+      // Emoji淡入3秒后触发提示词和物理引擎
+      const afterSkipTimer = window.setTimeout(() => {
+        setShowPrompt(true);
+        setShowPromptAnimation(true);
+        
+        // 如果物理引擎还未启动，立即启动
+        if (!physicsEnabled && emojiPhysics.length === 0) {
+          const physics: EmojiPhysics[] = emojiInitialPositions.map((pos) => {
+            const x = (parseFloat(pos.left) / 100) * window.innerWidth;
+            const y = (parseFloat(pos.top) / 100) * window.innerHeight;
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.2 + Math.random() * 0.3;
+            
+            return {
+              x,
+              y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              rotation: Math.random() * 360,
+              rotationSpeed: (Math.random() - 0.5) * 0.3,
+            };
+          });
+          
+          setEmojiPhysics(physics);
+          setPhysicsEnabled(true);
+          console.log('✅ 跳过后启动物理引擎');
+        }
+      }, 3000);
+      welcomeTimersRef.current.push(afterSkipTimer);
+    }
+  }, [welcomePhase, physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
+
   // 初始化emoji物理属性（淡入完成后启动）
   useEffect(() => {
     if (!physicsEnabled && emojiPhysics.length === 0) {
@@ -702,9 +726,9 @@ function App() {
           const x = (parseFloat(pos.left) / 100) * window.innerWidth;
           const y = (parseFloat(pos.top) / 100) * window.innerHeight;
           
-          // 超级缓慢的随机速度（0.1-0.3 px/frame）
+          // 缓慢的随机速度（0.2-0.5 px/frame）
           const angle = Math.random() * Math.PI * 2;
-          const speed = 0.1 + Math.random() * 0.2;
+          const speed = 0.2 + Math.random() * 0.3;
           
           return {
             x,
@@ -718,20 +742,28 @@ function App() {
         
         setEmojiPhysics(physics);
         setPhysicsEnabled(true);
-      }, 18800); // 15.8秒emoji开始淡入 + 3秒淡入时长
+        console.log('✅ 物理引擎已启动（emoji淡入时）');
+      }, 15800); // 15.8秒emoji开始淡入时立即启动物理引擎
     }
   }, [physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
 
-  // 物理引擎 - 超级缓慢移动和反弹
+  // 物理引擎 - 超级缓慢移动和反弹 + emoji间碰撞
   useEffect(() => {
     if (!physicsEnabled || emojiPhysics.length === 0) return;
 
     const damping = 0.92; // 阻尼系数（碰撞后保留92%速度）
+    const restitution = 0.8; // 弹性系数（碰撞恢复系数）
     
     const updatePhysics = () => {
-      setEmojiPhysics(prevPhysics => 
-        prevPhysics.map(emoji => {
+      setEmojiPhysics(prevPhysics => {
+        // 第一步：更新所有emoji的位置
+        let newPhysics = prevPhysics.map((emoji, index) => {
           let { x, y, vx, vy, rotation, rotationSpeed } = emoji;
+          
+          // 如果当前emoji被鼠标悬停，跳过位置更新
+          if (index === hoveredEmojiIndex) {
+            return emoji; // 保持原位置，不移动
+          }
           
           // 更新位置
           x += vx;
@@ -755,11 +787,72 @@ function App() {
             vy = -Math.abs(vy) * damping;
           }
           
-          // 诗句框碰撞检测已取消 - emoji可以穿过诗句框
-          
           return { ...emoji, x, y, vx, vy, rotation };
-        })
-      );
+        });
+        
+        // 第二步：检测并处理emoji之间的碰撞
+        for (let i = 0; i < newPhysics.length; i++) {
+          // 跳过被悬停的emoji
+          if (i === hoveredEmojiIndex) continue;
+          
+          for (let j = i + 1; j < newPhysics.length; j++) {
+            // 跳过被悬停的emoji
+            if (j === hoveredEmojiIndex) continue;
+            
+            const emoji1 = newPhysics[i];
+            const emoji2 = newPhysics[j];
+            
+            // 计算两个emoji中心的距离
+            const dx = emoji2.x - emoji1.x;
+            const dy = emoji2.y - emoji1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // 碰撞检测：如果距离小于两个半径之和
+            const minDistance = emojiSize; // 两个emoji的半径之和
+            
+            if (distance < minDistance && distance > 0) {
+              // 发生碰撞！
+              
+              // 计算碰撞法线（单位向量）
+              const nx = dx / distance;
+              const ny = dy / distance;
+              
+              // 计算相对速度
+              const dvx = emoji2.vx - emoji1.vx;
+              const dvy = emoji2.vy - emoji1.vy;
+              
+              // 相对速度在法线方向的分量
+              const dvn = dvx * nx + dvy * ny;
+              
+              // 如果emoji正在远离，不处理碰撞
+              if (dvn > 0) continue;
+              
+              // 计算碰撞冲量（假设质量相等）
+              const impulse = -(1 + restitution) * dvn / 2;
+              
+              // 更新速度（弹性碰撞）
+              newPhysics[i].vx -= impulse * nx;
+              newPhysics[i].vy -= impulse * ny;
+              newPhysics[j].vx += impulse * nx;
+              newPhysics[j].vy += impulse * ny;
+              
+              // 分离重叠的emoji（避免卡住）
+              const overlap = minDistance - distance;
+              const separationX = (overlap / 2) * nx;
+              const separationY = (overlap / 2) * ny;
+              
+              newPhysics[i].x -= separationX;
+              newPhysics[i].y -= separationY;
+              newPhysics[j].x += separationX;
+              newPhysics[j].y += separationY;
+              
+              console.log(`💥 Emoji碰撞: #${i} ↔ #${j}`);
+            }
+          }
+        }
+        
+        return newPhysics;
+      });
       
       animationFrameRef.current = requestAnimationFrame(updatePhysics);
     };
@@ -771,7 +864,7 @@ function App() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [physicsEnabled, emojiPhysics.length]);
+  }, [physicsEnabled, emojiPhysics.length, hoveredEmojiIndex]);
 
   // 触发流星效果的通用函数
   const triggerMeteor = useCallback(() => {
@@ -841,13 +934,30 @@ function App() {
     }
   }, [particleSequences, meteorParticles, particlePositionOverrides]);
 
-  // 流星效果：定期自动触发（每30秒一次）
+  // 流星效果：定期自动触发（20-60秒随机间隔）
   useEffect(() => {
-    const meteorInterval = setInterval(() => {
-      triggerMeteor();
-    }, 30000);
+    let meteorTimer: number;
+    
+    const scheduleMeteor = () => {
+      // 随机生成20-60秒的间隔
+      const randomInterval = 20000 + Math.random() * 40000; // 20000-60000毫秒
+      console.log(`🌠 下一次流星将在 ${(randomInterval / 1000).toFixed(1)} 秒后出现`);
+      
+      meteorTimer = window.setTimeout(() => {
+        triggerMeteor();
+        // 触发后立即安排下一次流星
+        scheduleMeteor();
+      }, randomInterval);
+    };
+    
+    // 启动第一次流星调度
+    scheduleMeteor();
 
-    return () => clearInterval(meteorInterval);
+    return () => {
+      if (meteorTimer) {
+        clearTimeout(meteorTimer);
+      }
+    };
   }, [triggerMeteor]);
 
   // 处理爱心点击
@@ -1285,10 +1395,18 @@ function App() {
                 willChange: usePhysics ? 'transform, filter' : 'filter',
               }}
               onMouseEnter={(e) => {
+                // 增强辉光效果
                 e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.maxSize * 1.5}px rgba(${glowColor}, ${glowSize.maxOpacity * 1.2}))`;
+                // 暂停emoji移动
+                setHoveredEmojiIndex(index);
+                console.log(`🖱️ 鼠标悬停: ${item.emoji} ${item.mood} (暂停移动)`);
               }}
               onMouseLeave={(e) => {
+                // 恢复辉光效果
                 e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`;
+                // 恢复emoji移动
+                setHoveredEmojiIndex(null);
+                console.log(`🖱️ 鼠标离开: ${item.emoji} ${item.mood} (恢复移动)`);
               }}
               title={item.mood}
             >
