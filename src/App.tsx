@@ -185,6 +185,7 @@ function App() {
   const [emojisVisible, setEmojisVisible] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);  // 控制提示词显示（初始为false）
   const [showPromptAnimation, setShowPromptAnimation] = useState(false);  // 控制提示词淡入动画
+  const [isSkipped, setIsSkipped] = useState(false);  // 标记是否跳过了入场动画
   
   // 入场动画定时器引用（用于跳过功能）
   const welcomeTimersRef = useRef<number[]>([]);
@@ -564,7 +565,8 @@ function App() {
         // 普通粒子绘制
         // 计算淡入进度（基于 fadeInDelay 和层级）
         const fadeInStart = particle.fadeInDelay;
-        const fadeInDuration = particle.layer === 'back' ? 3 : particle.layer === 'mid' ? 4 : 5;
+        // 跳过后所有粒子使用1秒淡入，正常流程使用3-5秒淡入
+        const fadeInDuration = isSkipped ? 1 : (particle.layer === 'back' ? 3 : particle.layer === 'mid' ? 4 : 5);
         const fadeInProgress = Math.min(1, Math.max(0, (elapsedTime - fadeInStart) / fadeInDuration));
 
         // 如果还没开始淡入，跳过
@@ -642,7 +644,7 @@ function App() {
         cancelAnimationFrame(particleAnimationRef.current);
       }
     };
-  }, [particleSequences, meteorParticles, particlePositionOverrides, isMobile]);
+  }, [particleSequences, meteorParticles, particlePositionOverrides, isMobile, isSkipped]);
 
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
@@ -737,13 +739,25 @@ function App() {
       welcomeTimersRef.current.forEach(timer => clearTimeout(timer));
       welcomeTimersRef.current = [];
       
+      // 标记已跳过
+      setIsSkipped(true);
+      
       // 直接跳转到底部诗句淡入阶段
       setWelcomePhase('complete');
       
-      // 立即触发Emoji淡入
-      setEmojisVisible(true);
+      // 重置粒子时间基准，让所有粒子立即开始1秒淡入
+      // 将时间设为7秒前（所有粒子的fadeInDelay都已过），粒子会立即开始淡入
+      startTimeRef.current = Date.now() - 7000;
+      console.log('✨ 粒子时间基准已重置，3层粒子将同时淡入（1秒）');
       
-      // Emoji淡入3秒后触发提示词和物理引擎
+      // 延迟500ms后触发Emoji淡入
+      const emojiTimer = window.setTimeout(() => {
+        setEmojisVisible(true);
+        console.log('✅ Emoji开始淡入（2秒）');
+      }, 500);
+      welcomeTimersRef.current.push(emojiTimer);
+      
+      // Emoji淡入完成后（500ms延迟 + 2000ms淡入 = 2500ms）启动物理引擎和提示词
       const afterSkipTimer = window.setTimeout(() => {
         setShowPrompt(true);
         setShowPromptAnimation(true);
@@ -768,9 +782,9 @@ function App() {
           
           setEmojiPhysics(physics);
           setPhysicsEnabled(true);
-          console.log('✅ 跳过后启动物理引擎');
+          console.log('✅ Emoji淡入完成，物理引擎已启动');
         }
-      }, 3000);
+      }, 2500);
       welcomeTimersRef.current.push(afterSkipTimer);
     }
   }, [welcomePhase, physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
@@ -1467,7 +1481,7 @@ function App() {
                 opacity: emojisVisible ? 1 : 0,
                 filter: `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`,
                 animation: emojisVisible 
-                  ? `emojiSimpleFadeIn 3s ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out 3s infinite`
+                  ? `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`
                   : 'none',
                 transition: 'filter 0.3s ease',
                 willChange: usePhysics ? 'transform, filter' : 'filter',
