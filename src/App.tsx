@@ -252,9 +252,9 @@ function App() {
       const chineseLength = chineseChars.length;
       const nonChineseLength = nonChineseChars.length;
       
-      // 中文：每秒5个字符，非中文：每秒10个字符
-      const chineseDuration = (chineseLength / 5) * 1000;
-      const nonChineseDuration = (nonChineseLength / 10) * 1000;
+      // 中文：每秒6个字符，非中文：每秒12个字符
+      const chineseDuration = (chineseLength / 6) * 1000;
+      const nonChineseDuration = (nonChineseLength / 12) * 1000;
       const calculatedDuration = chineseDuration + nonChineseDuration;
       
       // 下限1.5秒，上限13.5秒
@@ -1527,7 +1527,7 @@ function App() {
               
               {/* 爱心按钮区域 - 根据诗句长度动态显示 */}
               {showLoveButton && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   {/* 提示文字 - 高光划过效果 */}
                   {!isLoved && (
                     <span

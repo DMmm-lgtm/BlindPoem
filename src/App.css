@@ -263,10 +263,10 @@
 /* 高光划过动画 - 2.5秒循环，从左往右 */
 @keyframes loveHintShine {
   0% {
-    background-position: -150% center;  /* 从左侧外开始 */
+    background-position: 250% center;   /* 从右侧外开始 */
   }
   100% {
-    background-position: 250% center;   /* 划到右侧外结束 */
+    background-position: -150% center;  /* 划到左侧外结束 */
   }
 }
 
