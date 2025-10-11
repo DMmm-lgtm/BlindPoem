@@ -139,10 +139,10 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 动态字体大小
-  const welcomeFontSize = isSmallMobile ? '1rem' : isMobile ? '1.5rem' : '2.5rem';
-  const bottomPoemFontSize = isSmallMobile ? '1rem' : isMobile ? '1.2rem' : '1.8rem';
-  const promptFontSize = isSmallMobile ? '1.2rem' : isMobile ? '1.5rem' : '2.5rem';
+  // 动态字体大小 - 移动端优化（增大显示）
+  const welcomeFontSize = isSmallMobile ? '1.4rem' : isMobile ? '2rem' : '2.5rem';
+  const bottomPoemFontSize = isSmallMobile ? '1.4rem' : isMobile ? '1.75rem' : '1.8rem';
+  const promptFontSize = isSmallMobile ? '1.75rem' : isMobile ? '2.2rem' : '2.5rem';
 
   // 🎲 每次刷新从 100 个中随机选择 27 个 Emoji（保持情绪平衡）
   const selectedEmojis = useMemo(() => {
@@ -326,12 +326,12 @@ function App() {
   // 🌟 三层星空粒子系统 - 使用 useMemo 缓存，避免闪烁
   // 移动端优化：减少粒子数量
   const particleSequences = useMemo(() => {
-    // 根据屏幕尺寸调整粒子数量
+    // 根据屏幕尺寸调整粒子数量（移动端增加到1.5倍）
     const particleCount = isSmallMobile ? 
-      { front: 15, mid: 15, back: 10 } :  // 超小屏：40个
+      { front: 22, mid: 22, back: 15 } :  // 超小屏：59个（原40个的1.5倍）
       isMobile ? 
-      { front: 25, mid: 20, back: 15 } :  // 移动端：60个
-      { front: 40, mid: 40, back: 40 };   // PC端：120个
+      { front: 37, mid: 30, back: 22 } :  // 移动端：89个（原60个的1.5倍）
+      { front: 40, mid: 40, back: 40 };   // PC端：120个（不变）
     
     // 生成指定层级的粒子
     const generateParticles = (
@@ -1551,7 +1551,7 @@ function App() {
           <div 
             className="text-gold animate-pulse"
             style={{
-              fontSize: isSmallMobile ? '1rem' : isMobile ? '1.25rem' : '1.5rem'
+              fontSize: isSmallMobile ? '1.4rem' : isMobile ? '1.75rem' : '1.5rem'
             }}
           >
             诗意生成中...
