@@ -154,16 +154,6 @@
   }
 }
 
-/* 跳过提示淡入动画 */
-@keyframes skipHintFadeIn {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 0.5;
-  }
-}
-
 /* Emoji 物理运动系统 - 动画已通过JavaScript动态生成 */
 
 /* 移动端适配 - 完整版 */

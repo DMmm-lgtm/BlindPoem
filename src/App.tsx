@@ -1151,9 +1151,8 @@ function App() {
             alignItems: 'center',
             justifyContent: 'center',
             pointerEvents: welcomePhase === 'complete' ? 'none' : 'auto',  // 完成后不阻挡交互
-            cursor: welcomePhase === 'complete' ? 'default' : 'pointer',  // 可跳过时显示手型
+            cursor: welcomePhase === 'complete' ? 'default' : 'auto',  // 移除手型提示
           }}
-          title={welcomePhase !== 'complete' ? '点击跳过入场动画' : ''}
         >
           {/* 入场诗句 */}
           <div
@@ -1276,26 +1275,6 @@ function App() {
               >
                 在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
                 <span>...</span>
-              </div>
-            )}
-            
-            {/* 跳过入场动画提示 */}
-            {(welcomePhase === 'lines' || welcomePhase === 'sliding') && (
-              <div
-                style={{
-                  position: 'absolute',
-                  right: isMobile ? '1rem' : '2rem',
-                  bottom: isMobile ? '1rem' : '2rem',
-                  fontSize: isSmallMobile ? '0.75rem' : '1rem',
-                  fontFamily: 'QianTuBiFeng, sans-serif',
-                  color: 'rgba(255, 215, 0, 0.5)',
-                  textAlign: 'right',
-                  opacity: 0,
-                  animation: 'skipHintFadeIn 1s ease-out 2s forwards',
-                  pointerEvents: 'none',
-                }}
-              >
-                点击屏幕跳过 ⏭️
               </div>
             )}
           </div>
