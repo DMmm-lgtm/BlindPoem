@@ -252,13 +252,13 @@ function App() {
       const chineseLength = chineseChars.length;
       const nonChineseLength = nonChineseChars.length;
       
-      // 中文：每秒3个字符，非中文：每秒6个字符
-      const chineseDuration = (chineseLength / 3) * 1000;
-      const nonChineseDuration = (nonChineseLength / 8) * 1000;
+      // 中文：每秒5个字符，非中文：每秒10个字符
+      const chineseDuration = (chineseLength / 5) * 1000;
+      const nonChineseDuration = (nonChineseLength / 10) * 1000;
       const calculatedDuration = chineseDuration + nonChineseDuration;
       
-      // 上限15秒
-      const displayDuration = Math.min(calculatedDuration, 15000);
+      // 下限1.5秒，上限13.5秒
+      const displayDuration = Math.max(1500, Math.min(calculatedDuration, 13500));
       
       console.log(`✅ 诗句字符：中文${chineseLength}个，非中文${nonChineseLength}个，爱心按钮将在 ${(displayDuration / 1000).toFixed(1)} 秒后出现`);
       
@@ -1525,26 +1525,48 @@ function App() {
                 关闭
               </button>
               
-              {/* 爱心按钮 - 根据诗句长度动态显示 */}
+              {/* 爱心按钮区域 - 根据诗句长度动态显示 */}
               {showLoveButton && (
-                <button
-                  onClick={handleLoveClick}
-                  className="text-3xl transition-all duration-300 hover:scale-110"
-                  style={{
-                    transform: isLoved ? 'scale(1.2)' : 'scale(1)',
-                    filter: isLoved ? 'drop-shadow(0 0 8px rgba(255, 50, 50, 0.8))' : 'none',
-                    animation: 'loveButtonFadeIn 1.5s ease-out forwards',
-                    border: 'none',
-                    background: 'transparent',
-                    outline: 'none',
-                    boxShadow: 'none',
-                    padding: 0,
-                    cursor: 'pointer',
-                  }}
-                  title={isLoved ? '感谢支持！' : '喜欢这首诗？'}
-                >
-                  {isLoved ? '❤️' : '🤍'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* 提示文字 - 高光划过效果 */}
+                  {!isLoved && (
+                    <span
+                      className="love-hint-text"
+                      style={{
+                        fontSize: '0.875rem',
+                        color: 'rgba(255, 215, 0, 0.8)',
+                        fontFamily: 'QianTuBiFeng, sans-serif',
+                        whiteSpace: 'nowrap',
+                        animation: 'loveHintFadeIn 0.8s ease-out 1.5s forwards, loveHintShine 2.5s linear 2.5s infinite',
+                        opacity: 0,
+                        position: 'relative',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      喜欢就点个赞吧！
+                    </span>
+                  )}
+                  
+                  {/* 爱心按钮 */}
+                  <button
+                    onClick={handleLoveClick}
+                    className="text-3xl transition-all duration-300 hover:scale-110"
+                    style={{
+                      transform: isLoved ? 'scale(1.2)' : 'scale(1)',
+                      filter: isLoved ? 'drop-shadow(0 0 8px rgba(255, 50, 50, 0.8))' : 'none',
+                      animation: 'loveButtonFadeIn 1.5s ease-out forwards',
+                      border: 'none',
+                      background: 'transparent',
+                      outline: 'none',
+                      boxShadow: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                    }}
+                    title={isLoved ? '感谢支持！' : '喜欢这首诗？'}
+                  >
+                    {isLoved ? '❤️' : '🤍'}
+                  </button>
+                </div>
               )}
             </div>
           </div>
