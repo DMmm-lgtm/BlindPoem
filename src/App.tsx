@@ -144,7 +144,7 @@ function App() {
   const bottomPoemFontSize = isSmallMobile ? '1.4rem' : isMobile ? '1.75rem' : '1.8rem';
   const promptFontSize = isSmallMobile ? '1.75rem' : isMobile ? '2.2rem' : '2.5rem';
 
-  // 🎲 每次刷新从 100 个中随机选择 27 个 Emoji（保持情绪平衡）
+  // 🎲 每次刷新从 100 个中随机选择 Emoji（保持情绪平衡，移动端性能优化）
   const selectedEmojis = useMemo(() => {
     // 分类 Emoji（按在数组中的位置）
     const positive = EMOJI_MOODS.slice(0, 35);   // 正面情绪 35个
@@ -152,23 +152,29 @@ function App() {
     const negative = EMOJI_MOODS.slice(55, 90);  // 负面情绪 35个
     const intense = EMOJI_MOODS.slice(90, 100);  // 强烈情绪 10个
     
+    // 根据设备类型选择不同数量（移动端21个，PC端27个）
+    const counts = isMobile 
+      ? { positive: 7, neutral: 4, negative: 7, intense: 3 }  // 移动端：21个
+      : { positive: 9, neutral: 5, negative: 9, intense: 4 }; // PC端：27个
+    
     // 从每类中随机选择，保持情绪平衡
     const selected = [
-      ...shuffleArray(positive).slice(0, 9),  // 9个正面
-      ...shuffleArray(neutral).slice(0, 5),   // 5个中性
-      ...shuffleArray(negative).slice(0, 9),  // 9个负面
-      ...shuffleArray(intense).slice(0, 4),   // 4个强烈
+      ...shuffleArray(positive).slice(0, counts.positive),
+      ...shuffleArray(neutral).slice(0, counts.neutral),
+      ...shuffleArray(negative).slice(0, counts.negative),
+      ...shuffleArray(intense).slice(0, counts.intense),
     ];
     
     // 再次打乱顺序，避免情绪分组显示
     const final = shuffleArray(selected);
     
-    console.log('🎲 本次从100个中随机选择的27个 Emoji:', 
+    const totalCount = isMobile ? 21 : 27;
+    console.log(`🎲 本次从100个中随机选择的${totalCount}个 Emoji (${isMobile ? '移动端' : 'PC端'}):`, 
       final.map(e => `${e.emoji} ${e.mood}`).join(', ')
     );
     
     return final;
-  }, []); // 空依赖数组 - 页面刷新时重新计算
+  }, [isMobile]); // 依赖 isMobile - 设备类型变化时重新计算
 
   // 入场动画状态
   const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
@@ -326,11 +332,11 @@ function App() {
   // 🌟 三层星空粒子系统 - 使用 useMemo 缓存，避免闪烁
   // 移动端优化：减少粒子数量
   const particleSequences = useMemo(() => {
-    // 根据屏幕尺寸调整粒子数量（移动端增加到1.5倍）
+    // 根据屏幕尺寸调整粒子数量（移动端性能优化）
     const particleCount = isSmallMobile ? 
-      { front: 22, mid: 22, back: 15 } :  // 超小屏：59个（原40个的1.5倍）
+      { front: 12, mid: 10, back: 8 } :   // 超小屏：30个（性能优化）
       isMobile ? 
-      { front: 37, mid: 30, back: 22 } :  // 移动端：89个（原60个的1.5倍）
+      { front: 25, mid: 20, back: 15 } :  // 移动端：60个（性能优化）
       { front: 40, mid: 40, back: 40 };   // PC端：120个（不变）
     
     // 生成指定层级的粒子
@@ -392,7 +398,9 @@ function App() {
     const midLayer = generateParticles(particleCount.mid, 'mid', 1, 4);
     const backLayer = generateParticles(particleCount.back, 'back', 2, 5);
     
-    console.log(`✨ 粒子系统: 前景${particleCount.front}个 + 中景${particleCount.mid}个 + 背景${particleCount.back}个 = 总计${particleCount.front + particleCount.mid + particleCount.back}个`);
+    const deviceType = isSmallMobile ? '超小屏' : isMobile ? '移动端' : 'PC端';
+    const fps = isMobile ? '30fps' : '60fps';
+    console.log(`✨ 粒子系统 (${deviceType}, ${fps}): 前景${particleCount.front}个 + 中景${particleCount.mid}个 + 背景${particleCount.back}个 = 总计${particleCount.front + particleCount.mid + particleCount.back}个`);
     
     return { frontLayer, midLayer, backLayer };
   }, [isSmallMobile, isMobile]); // 屏幕尺寸变化时重新计算
@@ -425,8 +433,20 @@ function App() {
       ...particleSequences.frontLayer,
     ];
 
+    // 移动端帧率控制（性能优化）
+    let lastFrameTime = 0;
+    const targetFPS = isMobile ? 30 : 60;
+    const frameInterval = 1000 / targetFPS;
+
     // 渲染循环
-    const render = () => {
+    const render = (timestamp: number = Date.now()) => {
+      // 移动端帧率限制
+      if (isMobile && timestamp - lastFrameTime < frameInterval) {
+        particleAnimationRef.current = requestAnimationFrame(render);
+        return;
+      }
+      lastFrameTime = timestamp;
+
       const currentTime = Date.now();
       const elapsedTime = (currentTime - startTimeRef.current) / 1000; // 转换为秒
 
