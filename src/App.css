@@ -166,15 +166,83 @@
 
 /* Emoji 物理运动系统 - 动画已通过JavaScript动态生成 */
 
-/* 移动端适配 */
+/* 移动端适配 - 完整版 */
 @media (max-width: 768px) {
-  .emoji-btn {
-    font-size: 2.5rem;
+  /* Emoji按钮 */
+  button[title] {
+    font-size: 2rem !important;
   }
   
+  /* 诗句展示框 */
   .poem-display {
     max-width: 90vw;
-    padding: 1.5rem;
+    padding: 1rem;
+  }
+  
+  .poem-display .text-2xl {
+    font-size: 1.25rem !important;
+    line-height: 1.75rem !important;
+  }
+  
+  .poem-display .text-sm {
+    font-size: 0.75rem !important;
+  }
+  
+  /* 按钮文字 */
+  .poem-display button {
+    font-size: 0.875rem !important;
+    padding: 0.5rem 1rem !important;
+  }
+  
+  /* 爱心按钮 */
+  .poem-display button.text-3xl {
+    font-size: 2rem !important;
+  }
+  
+  /* 二维码 */
+  .poem-display img {
+    width: 10rem !important;
+    height: 10rem !important;
+  }
+}
+
+/* 超小屏幕（手机竖屏）*/
+@media (max-width: 480px) {
+  /* Emoji按钮 - 更小 */
+  button[title] {
+    font-size: 1.5rem !important;
+  }
+  
+  /* 诗句展示框 */
+  .poem-display {
+    max-width: 95vw;
+    padding: 0.75rem;
+  }
+  
+  .poem-display .text-2xl {
+    font-size: 1rem !important;
+    line-height: 1.5rem !important;
+  }
+  
+  .poem-display .text-sm {
+    font-size: 0.625rem !important;
+  }
+  
+  /* 按钮文字 */
+  .poem-display button {
+    font-size: 0.75rem !important;
+    padding: 0.375rem 0.75rem !important;
+  }
+  
+  /* 爱心按钮 */
+  .poem-display button.text-3xl {
+    font-size: 1.5rem !important;
+  }
+  
+  /* 二维码 */
+  .poem-display img {
+    width: 8rem !important;
+    height: 8rem !important;
   }
 }
 

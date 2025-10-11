@@ -125,6 +125,25 @@ const EMOJI_MOODS = [
 ];
 
 function App() {
+  // 📱 响应式屏幕尺寸检测
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [isSmallMobile, setIsSmallMobile] = useState(window.innerWidth <= 480);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+      setIsSmallMobile(window.innerWidth <= 480);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // 动态字体大小
+  const welcomeFontSize = isSmallMobile ? '1rem' : isMobile ? '1.5rem' : '2.5rem';
+  const bottomPoemFontSize = isSmallMobile ? '1rem' : isMobile ? '1.2rem' : '1.8rem';
+  const promptFontSize = isSmallMobile ? '1.2rem' : isMobile ? '1.5rem' : '2.5rem';
+
   // 🎲 每次刷新从 100 个中随机选择 27 个 Emoji（保持情绪平衡）
   const selectedEmojis = useMemo(() => {
     // 分类 Emoji（按在数组中的位置）
@@ -304,8 +323,16 @@ function App() {
     // }, 23000);
   }, []);
 
-  // 🌟 三层星空粒子系统（120个粒子）- 使用 useMemo 缓存，避免闪烁
+  // 🌟 三层星空粒子系统 - 使用 useMemo 缓存，避免闪烁
+  // 移动端优化：减少粒子数量
   const particleSequences = useMemo(() => {
+    // 根据屏幕尺寸调整粒子数量
+    const particleCount = isSmallMobile ? 
+      { front: 15, mid: 15, back: 10 } :  // 超小屏：40个
+      isMobile ? 
+      { front: 25, mid: 20, back: 15 } :  // 移动端：60个
+      { front: 40, mid: 40, back: 40 };   // PC端：120个
+    
     // 生成指定层级的粒子
     const generateParticles = (
       count: number, 
@@ -360,13 +387,15 @@ function App() {
       }));
     };
     
-    // 三层粒子：前景40个、中景40个、背景40个（共120个）
-    const frontLayer = generateParticles(40, 'front', 0, 3);    // 前景层
-    const midLayer = generateParticles(40, 'mid', 1, 4);        // 中景层
-    const backLayer = generateParticles(40, 'back', 2, 5);      // 背景层
+    // 三层粒子：根据屏幕尺寸调整数量
+    const frontLayer = generateParticles(particleCount.front, 'front', 0, 3);
+    const midLayer = generateParticles(particleCount.mid, 'mid', 1, 4);
+    const backLayer = generateParticles(particleCount.back, 'back', 2, 5);
+    
+    console.log(`✨ 粒子系统: 前景${particleCount.front}个 + 中景${particleCount.mid}个 + 背景${particleCount.back}个 = 总计${particleCount.front + particleCount.mid + particleCount.back}个`);
     
     return { frontLayer, midLayer, backLayer };
-  }, []); // 空依赖数组 - 只计算一次
+  }, [isSmallMobile, isMobile]); // 屏幕尺寸变化时重新计算
 
   // Canvas 粒子系统
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -630,7 +659,8 @@ function App() {
   const [physicsEnabled, setPhysicsEnabled] = useState(false);
   const [hoveredEmojiIndex, setHoveredEmojiIndex] = useState<number | null>(null); // 悬停的emoji索引
   const animationFrameRef = useRef<number>(0);
-  const emojiSize = 48;
+  // 根据屏幕尺寸调整emoji碰撞半径
+  const emojiSize = isSmallMobile ? 24 : isMobile ? 32 : 48;
 
   // 27个Emoji的初始位置（淡入时使用） - 每次刷新随机打乱位置
   const emojiInitialPositions = useMemo(() => {
@@ -1153,11 +1183,12 @@ function App() {
                   style={{
                     position: 'absolute',
                     left: '50%',
-                    fontSize: '2.5rem',
+                    fontSize: welcomeFontSize,
                     fontFamily: 'QianTuBiFeng, sans-serif',
                     color: '#ffd700',
                     textAlign: 'center',
-                    whiteSpace: 'nowrap',
+                    whiteSpace: isSmallMobile ? 'normal' : 'nowrap',
+                    maxWidth: isMobile ? '90vw' : 'none',
                     // 阶段1：逐行淡入，停留在初始位置（根据字符数分配时间）
                     ...(welcomePhase === 'lines' && {
                       top: `${initialTop}%`,
@@ -1170,7 +1201,7 @@ function App() {
                       top: `${initialTop}%`,  // 保持在原位置
                       bottom: 'auto',
                       opacity: 0.9,
-                      fontSize: '2.5rem',
+                      fontSize: welcomeFontSize,
                       fontFamily: 'QianTuBiFeng, sans-serif',
                       color: '#ffd700',
                       transform: 'translateX(-50%)',
@@ -1180,9 +1211,10 @@ function App() {
                     ...(welcomePhase === 'complete' && shouldKeep && {
                       bottom: `${finalBottom}rem`,
                       opacity: 0,
-                      fontSize: '1.8rem',
+                      fontSize: bottomPoemFontSize,
                       transform: 'translateX(-50%)',
                       animation: `welcomeLineFadeInBottom 1.5s ease-out ${isFirstLine ? 0 : 1.4}s forwards`,
+                      maxWidth: isMobile ? '90vw' : 'none',
                     }),
                     // 其他句子保持淡出状态
                     ...(welcomePhase === 'complete' && !shouldKeep && {
@@ -1205,11 +1237,12 @@ function App() {
                   left: '50%',
                   top: '33%',
                   transform: 'translateX(-50%)',
-                  fontSize: '2.5rem',
+                  fontSize: promptFontSize,
                   fontFamily: 'QianTuBiFeng, sans-serif',
                   color: 'rgba(255, 215, 0, 0.8)',
                   textAlign: 'center',
-                  whiteSpace: 'nowrap',
+                  whiteSpace: isSmallMobile ? 'normal' : 'nowrap',
+                  maxWidth: isMobile ? '90vw' : 'none',
                   opacity: 0,
                   animation: 'welcomeLineAppear 2s ease-out forwards',
                 }}
@@ -1231,11 +1264,12 @@ function App() {
                   left: '50%',
                   top: '33%',
                   transform: 'translateX(-50%)',
-                  fontSize: '2.5rem',
+                  fontSize: promptFontSize,
                   fontFamily: 'QianTuBiFeng, sans-serif',
                   color: 'rgba(255, 215, 0, 0.8)',
                   textAlign: 'center',
-                  whiteSpace: 'nowrap',
+                  whiteSpace: isSmallMobile ? 'normal' : 'nowrap',
+                  maxWidth: isMobile ? '90vw' : 'none',
                   opacity: 0.9,
                   animation: 'promptFadeOut 0.8s ease-out forwards',
                 }}
@@ -1250,9 +1284,9 @@ function App() {
               <div
                 style={{
                   position: 'absolute',
-                  right: '2rem',
-                  bottom: '2rem',
-                  fontSize: '1rem',
+                  right: isMobile ? '1rem' : '2rem',
+                  bottom: isMobile ? '1rem' : '2rem',
+                  fontSize: isSmallMobile ? '0.75rem' : '1rem',
                   fontFamily: 'QianTuBiFeng, sans-serif',
                   color: 'rgba(255, 215, 0, 0.5)',
                   textAlign: 'right',
@@ -1395,18 +1429,26 @@ function App() {
                 willChange: usePhysics ? 'transform, filter' : 'filter',
               }}
               onMouseEnter={(e) => {
-                // 增强辉光效果
-                e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.maxSize * 1.5}px rgba(${glowColor}, ${glowSize.maxOpacity * 1.2}))`;
-                // 暂停emoji移动
-                setHoveredEmojiIndex(index);
-                console.log(`🖱️ 鼠标悬停: ${item.emoji} ${item.mood} (暂停移动)`);
+                // PC端：增强辉光效果
+                if (!isMobile) {
+                  e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.maxSize * 1.5}px rgba(${glowColor}, ${glowSize.maxOpacity * 1.2}))`;
+                  // 暂停emoji移动
+                  setHoveredEmojiIndex(index);
+                  console.log(`🖱️ 鼠标悬停: ${item.emoji} ${item.mood} (暂停移动)`);
+                }
               }}
               onMouseLeave={(e) => {
-                // 恢复辉光效果
-                e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`;
-                // 恢复emoji移动
-                setHoveredEmojiIndex(null);
-                console.log(`🖱️ 鼠标离开: ${item.emoji} ${item.mood} (恢复移动)`);
+                // PC端：恢复辉光效果
+                if (!isMobile) {
+                  e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`;
+                  // 恢复emoji移动
+                  setHoveredEmojiIndex(null);
+                  console.log(`🖱️ 鼠标离开: ${item.emoji} ${item.mood} (恢复移动)`);
+                }
+              }}
+              onTouchStart={(e) => {
+                // 移动端：触摸时不暂停，直接触发点击
+                e.preventDefault();
               }}
               title={item.mood}
             >
@@ -1527,7 +1569,12 @@ function App() {
       {/* 加载状态 */}
       {isLoading && (
         <div className="fixed inset-0 flex items-center justify-center z-40 pointer-events-none">
-          <div className="text-gold text-xl animate-pulse">
+          <div 
+            className="text-gold animate-pulse"
+            style={{
+              fontSize: isSmallMobile ? '1rem' : isMobile ? '1.25rem' : '1.5rem'
+            }}
+          >
             诗意生成中...
           </div>
         </div>
