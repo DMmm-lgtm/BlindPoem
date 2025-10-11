@@ -3,45 +3,154 @@ import { generatePoem } from './lib/geminiClient';
 import { savePoemToDatabase, getRandomPoemFromDatabase } from './lib/poemService';
 import './App.css';
 
-// 27 个情绪 Emoji 配置
+// 🎲 Fisher-Yates 洗牌算法 - 用于随机打乱数组
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+// 100 个精选情绪 Emoji 配置池（完整池）
 const EMOJI_MOODS = [
-  // 正面情绪
-  { emoji: '😊', mood: '快乐', keyword: 'happy' },
+  // 正面情绪（35个）
+  { emoji: '😀', mood: '欢喜', keyword: 'grinning' },
+  { emoji: '😃', mood: '灿烂', keyword: 'bright' },
   { emoji: '😄', mood: '开心', keyword: 'joyful' },
-  { emoji: '🥰', mood: '爱意', keyword: 'loving' },
-  { emoji: '😌', mood: '满足', keyword: 'content' },
-  { emoji: '🤗', mood: '温暖', keyword: 'warm' },
+  { emoji: '😁', mood: '欣喜', keyword: 'delighted' },
+  { emoji: '😆', mood: '大笑', keyword: 'laughing' },
+  { emoji: '😅', mood: '尬笑', keyword: 'sweat-smile' },
+  { emoji: '🤣', mood: '爆笑', keyword: 'rofl' },
+  { emoji: '😂', mood: '喜极而泣', keyword: 'joy-tears' },
+  { emoji: '🙂', mood: '微笑', keyword: 'smile' },
+  { emoji: '🙃', mood: '倒笑', keyword: 'upside-down' },
+  { emoji: '😉', mood: '眨眼', keyword: 'wink' },
+  { emoji: '😊', mood: '快乐', keyword: 'happy' },
   { emoji: '😇', mood: '纯真', keyword: 'innocent' },
-  { emoji: '🥳', mood: '庆祝', keyword: 'celebratory' },
-  { emoji: '😎', mood: '自信', keyword: 'confident' },
-  { emoji: '🤩', mood: '惊艳', keyword: 'amazed' },
+  { emoji: '🥰', mood: '爱意', keyword: 'loving' },
+  { emoji: '😍', mood: '倾心', keyword: 'heart-eyes' },
+  { emoji: '🤩', mood: '惊艳', keyword: 'star-struck' },
+  { emoji: '😘', mood: '飞吻', keyword: 'kissing' },
+  { emoji: '😗', mood: '亲吻', keyword: 'kiss' },
+  { emoji: '😚', mood: '闭眼吻', keyword: 'kissing-closed' },
+  { emoji: '😙', mood: '含笑吻', keyword: 'kissing-smile' },
+  { emoji: '🥲', mood: '感动', keyword: 'touched' },
+  { emoji: '😋', mood: '美味', keyword: 'yum' },
+  { emoji: '😛', mood: '吐舌', keyword: 'tongue' },
+  { emoji: '😜', mood: '调皮', keyword: 'playful' },
+  { emoji: '🤪', mood: '疯狂', keyword: 'zany' },
+  { emoji: '😝', mood: '淘气', keyword: 'squint-tongue' },
+  { emoji: '🤑', mood: '发财', keyword: 'money' },
+  { emoji: '🤗', mood: '温暖', keyword: 'hugging' },
+  { emoji: '😏', mood: '得意', keyword: 'smirk' },
+  { emoji: '☺️', mood: '温馨', keyword: 'relaxed' },
+  { emoji: '😌', mood: '满足', keyword: 'content' },
+  { emoji: '🥳', mood: '庆祝', keyword: 'party' },
+  { emoji: '😎', mood: '自信', keyword: 'cool' },
+  { emoji: '🤓', mood: '书呆', keyword: 'nerd' },
+  { emoji: '🧐', mood: '审视', keyword: 'monocle' },
   
-  // 平静情绪
-  { emoji: '😴', mood: '困倦', keyword: 'sleepy' },
-  { emoji: '🤔', mood: '思考', keyword: 'thoughtful' },
-  { emoji: '😶', mood: '平静', keyword: 'calm' },
-  { emoji: '🙂', mood: '淡定', keyword: 'peaceful' },
-  { emoji: '😑', mood: '无感', keyword: 'neutral' },
+  // 平静/思考情绪（20个）
+  { emoji: '🤔', mood: '思考', keyword: 'thinking' },
+  { emoji: '😐', mood: '冷静', keyword: 'neutral-face' },
+  { emoji: '😑', mood: '无感', keyword: 'expressionless' },
+  { emoji: '😶', mood: '平静', keyword: 'no-mouth' },
+  { emoji: '🫤', mood: '犹豫', keyword: 'diagonal-mouth' },
+  { emoji: '🤐', mood: '沉默', keyword: 'zipper' },
+  { emoji: '🤨', mood: '疑惑', keyword: 'raised-eyebrow' },
+  { emoji: '😪', mood: '疲惫', keyword: 'sleepy' },
+  { emoji: '😴', mood: '困倦', keyword: 'sleeping' },
+  { emoji: '🥱', mood: '倦怠', keyword: 'yawn' },
+  { emoji: '😮‍💨', mood: '舒气', keyword: 'exhale' },
+  { emoji: '🫥', mood: '虚无', keyword: 'dotted-line' },
+  { emoji: '😶‍🌫️', mood: '迷茫', keyword: 'face-clouds' },
+  { emoji: '😬', mood: '咬牙', keyword: 'grimacing' },
+  { emoji: '🤥', mood: '说谎', keyword: 'lying' },
+  { emoji: '🙄', mood: '翻白眼', keyword: 'eye-roll' },
+  { emoji: '😒', mood: '不屑', keyword: 'unamused' },
+  { emoji: '🫡', mood: '敬礼', keyword: 'salute' },
+  { emoji: '🤭', mood: '捂嘴', keyword: 'hand-over-mouth' },
+  { emoji: '🤫', mood: '嘘', keyword: 'shush' },
   
-  // 负面情绪
-  { emoji: '😢', mood: '悲伤', keyword: 'sad' },
-  { emoji: '😭', mood: '哭泣', keyword: 'crying' },
-  { emoji: '😞', mood: '失落', keyword: 'disappointed' },
-  { emoji: '😔', mood: '沮丧', keyword: 'dejected' },
+  // 负面情绪（35个）
+  { emoji: '😕', mood: '困惑', keyword: 'confused' },
   { emoji: '😟', mood: '担忧', keyword: 'worried' },
-  { emoji: '😰', mood: '焦虑', keyword: 'anxious' },
-  { emoji: '😡', mood: '愤怒', keyword: 'angry' },
-  { emoji: '😤', mood: '不满', keyword: 'frustrated' },
+  { emoji: '🙁', mood: '皱眉', keyword: 'frown' },
+  { emoji: '☹️', mood: '沮丧', keyword: 'frowning' },
+  { emoji: '😮', mood: '惊讶', keyword: 'open-mouth' },
+  { emoji: '😯', mood: '惊呆', keyword: 'hushed' },
+  { emoji: '😲', mood: '吃惊', keyword: 'astonished' },
+  { emoji: '😳', mood: '尴尬', keyword: 'flushed' },
+  { emoji: '🥺', mood: '委屈', keyword: 'pleading' },
+  { emoji: '😦', mood: '蹙眉', keyword: 'frowning-mouth' },
+  { emoji: '😧', mood: '痛苦', keyword: 'anguished' },
+  { emoji: '😨', mood: '恐惧', keyword: 'fearful' },
+  { emoji: '😰', mood: '焦虑', keyword: 'anxious-sweat' },
+  { emoji: '😥', mood: '失意', keyword: 'sad-sweat' },
+  { emoji: '😢', mood: '悲伤', keyword: 'crying' },
+  { emoji: '😭', mood: '大哭', keyword: 'sobbing' },
+  { emoji: '😖', mood: '苦恼', keyword: 'confounded' },
+  { emoji: '😣', mood: '煎熬', keyword: 'persevering' },
+  { emoji: '😞', mood: '失落', keyword: 'disappointed' },
+  { emoji: '😓', mood: '挫败', keyword: 'downcast-sweat' },
+  { emoji: '😩', mood: '痛苦', keyword: 'weary' },
+  { emoji: '😫', mood: '厌烦', keyword: 'tired-face' },
+  { emoji: '🥹', mood: '哀伤', keyword: 'holding-tears' },
+  { emoji: '😤', mood: '不满', keyword: 'triumph' },
+  { emoji: '😡', mood: '愤怒', keyword: 'pouting' },
+  { emoji: '😠', mood: '生气', keyword: 'angry' },
+  { emoji: '🤬', mood: '暴怒', keyword: 'cursing' },
+  { emoji: '😾', mood: '恼怒', keyword: 'pouting-cat' },
+  { emoji: '😿', mood: '心碎', keyword: 'crying-cat' },
+  { emoji: '🙀', mood: '惊恐', keyword: 'weary-cat' },
+  { emoji: '😔', mood: '忧郁', keyword: 'pensive' },
+  { emoji: '🥹', mood: '含泪', keyword: 'tear-hold' },
+  { emoji: '💔', mood: '心碎', keyword: 'broken-heart' },
+  { emoji: '😒', mood: '厌恶', keyword: 'bored' },
+  { emoji: '🫨', mood: '颤抖', keyword: 'shaking' },
   
-  // 强烈情绪
-  { emoji: '😱', mood: '震惊', keyword: 'shocked' },
-  { emoji: '🤯', mood: '崩溃', keyword: 'overwhelmed' },
-  { emoji: '😳', mood: '尴尬', keyword: 'embarrassed' },
-  { emoji: '🥺', mood: '委屈', keyword: 'pitiful' },
+  // 强烈/特殊情绪（10个）
+  { emoji: '😱', mood: '震惊', keyword: 'screaming' },
+  { emoji: '🤯', mood: '崩溃', keyword: 'exploding-head' },
   { emoji: '😵', mood: '眩晕', keyword: 'dizzy' },
+  { emoji: '😵‍💫', mood: '晕眩', keyword: 'face-spiral' },
+  { emoji: '🤢', mood: '恶心', keyword: 'nauseated' },
+  { emoji: '🤮', mood: '呕吐', keyword: 'vomiting' },
+  { emoji: '🥵', mood: '燥热', keyword: 'hot' },
+  { emoji: '🥶', mood: '寒冷', keyword: 'cold' },
+  { emoji: '😈', mood: '邪恶', keyword: 'devil' },
+  { emoji: '👿', mood: '恶魔', keyword: 'imp' },
 ];
 
 function App() {
+  // 🎲 每次刷新从 100 个中随机选择 27 个 Emoji（保持情绪平衡）
+  const selectedEmojis = useMemo(() => {
+    // 分类 Emoji（按在数组中的位置）
+    const positive = EMOJI_MOODS.slice(0, 35);   // 正面情绪 35个
+    const neutral = EMOJI_MOODS.slice(35, 55);   // 平静情绪 20个
+    const negative = EMOJI_MOODS.slice(55, 90);  // 负面情绪 35个
+    const intense = EMOJI_MOODS.slice(90, 100);  // 强烈情绪 10个
+    
+    // 从每类中随机选择，保持情绪平衡
+    const selected = [
+      ...shuffleArray(positive).slice(0, 9),  // 9个正面
+      ...shuffleArray(neutral).slice(0, 5),   // 5个中性
+      ...shuffleArray(negative).slice(0, 9),  // 9个负面
+      ...shuffleArray(intense).slice(0, 4),   // 4个强烈
+    ];
+    
+    // 再次打乱顺序，避免情绪分组显示
+    const final = shuffleArray(selected);
+    
+    console.log('🎲 本次从100个中随机选择的27个 Emoji:', 
+      final.map(e => `${e.emoji} ${e.mood}`).join(', ')
+    );
+    
+    return final;
+  }, []); // 空依赖数组 - 页面刷新时重新计算
+
   // 入场动画状态
   const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
   const [showWelcome] = useState(true);  // 入场诗一直保持显示
@@ -166,21 +275,21 @@ function App() {
       setWelcomePhase('sliding');
     }, 13000);
     
-    // 15.9秒：淡出完成后，底部诗句开始淡入
+    // 14.5秒：淡出完成后，底部诗句开始淡入
     setTimeout(() => {
       setWelcomePhase('complete');
-    }, 15900);
+    }, 14500);
     
-    // 16.0秒：Emoji开始淡入（complete后0.1秒）
+    // 15.8秒：Emoji开始淡入
     setTimeout(() => {
       setEmojisVisible(true);
-    }, 16000);
+    }, 15800);
     
-    // 21秒：Emoji淡入完成后，提示词开始淡入
+    // 18.8秒：Emoji淡入完成后，提示词开始淡入
     setTimeout(() => {
       setShowPrompt(true);
       setShowPromptAnimation(true);
-    }, 21000);
+    }, 18800);
     
     // 不再隐藏欢迎屏幕，让入场诗一直保持在背景
     // setTimeout(() => {
@@ -482,23 +591,23 @@ function App() {
       '255, 100, 200',   // 粉色
       '100, 255, 255',   // 青色
     ];
-    return EMOJI_MOODS.map(() => colors[Math.floor(Math.random() * colors.length)]);
-  }, []);
+    return selectedEmojis.map(() => colors[Math.floor(Math.random() * colors.length)]);
+  }, [selectedEmojis]);
 
   // Emoji辉光周期（15-33秒）
   const emojiGlowDurations = useMemo(() => {
-    return EMOJI_MOODS.map(() => 15 + Math.random() * 18);
-  }, []);
+    return selectedEmojis.map(() => 15 + Math.random() * 18);
+  }, [selectedEmojis]);
 
   // Emoji辉光大小范围（每个emoji不同）
   const emojiGlowSizes = useMemo(() => {
-    return EMOJI_MOODS.map(() => ({
+    return selectedEmojis.map(() => ({
       minSize: 10 + Math.random() * 8,      // 最小光辉：10-18px
       maxSize: 20 + Math.random() * 12,     // 最大光辉：20-32px
       minOpacity: 0.3 + Math.random() * 0.2, // 最小不透明度：0.3-0.5
       maxOpacity: 0.5 + Math.random() * 0.3, // 最大不透明度：0.5-0.8
     }));
-  }, []);
+  }, [selectedEmojis]);
 
   // Emoji物理系统
   interface EmojiPhysics {
@@ -515,36 +624,41 @@ function App() {
   const animationFrameRef = useRef<number>(0);
   const emojiSize = 48;
 
-  // 27个Emoji的初始位置（淡入时使用）
-  const emojiInitialPositions = useMemo(() => [
-    { top: '8%', left: '12%' },
-    { top: '15%', left: '85%' },
-    { top: '22%', left: '25%' },
-    { top: '18%', left: '50%' },
-    { top: '28%', left: '70%' },
-    { top: '35%', left: '15%' },
-    { top: '32%', left: '88%' },
-    { top: '42%', left: '40%' },
-    { top: '45%', left: '65%' },
-    { top: '38%', left: '8%' },
-    { top: '52%', left: '30%' },
-    { top: '55%', left: '78%' },
-    { top: '48%', left: '92%' },
-    { top: '62%', left: '18%' },
-    { top: '58%', left: '55%' },
-    { top: '65%', left: '45%' },
-    { top: '68%', left: '82%' },
-    { top: '72%', left: '10%' },
-    { top: '75%', left: '35%' },
-    { top: '78%', left: '68%' },
-    { top: '82%', left: '25%' },
-    { top: '85%', left: '88%' },
-    { top: '88%', left: '50%' },
-    { top: '92%', left: '15%' },
-    { top: '12%', left: '62%' },
-    { top: '25%', left: '92%' },
-    { top: '95%', left: '75%' },
-  ], []);
+  // 27个Emoji的初始位置（淡入时使用） - 每次刷新随机打乱位置
+  const emojiInitialPositions = useMemo(() => {
+    const allPositions = [
+      { top: '8%', left: '12%' },
+      { top: '15%', left: '85%' },
+      { top: '22%', left: '25%' },
+      { top: '18%', left: '50%' },
+      { top: '28%', left: '70%' },
+      { top: '35%', left: '15%' },
+      { top: '32%', left: '88%' },
+      { top: '42%', left: '40%' },
+      { top: '45%', left: '65%' },
+      { top: '38%', left: '8%' },
+      { top: '52%', left: '30%' },
+      { top: '55%', left: '78%' },
+      { top: '48%', left: '92%' },
+      { top: '62%', left: '18%' },
+      { top: '58%', left: '55%' },
+      { top: '65%', left: '45%' },
+      { top: '68%', left: '82%' },
+      { top: '72%', left: '10%' },
+      { top: '75%', left: '35%' },
+      { top: '78%', left: '68%' },
+      { top: '82%', left: '25%' },
+      { top: '85%', left: '88%' },
+      { top: '88%', left: '50%' },
+      { top: '92%', left: '15%' },
+      { top: '12%', left: '62%' },
+      { top: '25%', left: '92%' },
+      { top: '95%', left: '75%' },
+    ];
+    
+    // 随机打乱全部27个位置
+    return shuffleArray(allPositions);
+  }, []);
 
   // 初始化emoji物理属性（淡入完成后启动）
   useEffect(() => {
@@ -572,7 +686,7 @@ function App() {
         
         setEmojiPhysics(physics);
         setPhysicsEnabled(true);
-      }, 21000); // 16秒emoji开始淡入 + 5秒淡入时长
+      }, 18800); // 15.8秒emoji开始淡入 + 3秒淡入时长
     }
   }, [physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
 
@@ -923,7 +1037,7 @@ function App() {
                       opacity: 0,
                       fontSize: '1.8rem',
                       transform: 'translateX(-50%)',
-                      animation: `welcomeLineFadeInBottom 1.5s ease-out ${isFirstLine ? 0 : 1}s forwards`,
+                      animation: `welcomeLineFadeInBottom 1.5s ease-out ${isFirstLine ? 0 : 1.4}s forwards`,
                     }),
                     // 其他句子保持淡出状态
                     ...(welcomePhase === 'complete' && !shouldKeep && {
@@ -1076,7 +1190,7 @@ function App() {
           pointerEvents: 'none',
         }}
       >
-        {EMOJI_MOODS.map((item, index) => {
+        {selectedEmojis.map((item, index) => {
           const glowColor = generateGlowColors[index];
           const glowDuration = emojiGlowDurations[index];
           const glowSize = emojiGlowSizes[index];
@@ -1110,7 +1224,7 @@ function App() {
                 opacity: emojisVisible ? 1 : 0,
                 filter: `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`,
                 animation: emojisVisible 
-                  ? `emojiSimpleFadeIn 5s ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out 5s infinite`
+                  ? `emojiSimpleFadeIn 3s ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out 3s infinite`
                   : 'none',
                 transition: 'filter 0.3s ease',
                 willChange: usePhysics ? 'transform, filter' : 'filter',
@@ -1130,7 +1244,7 @@ function App() {
         
         {/* 动态生成每个emoji的薄层辉光呼吸动画 */}
         <style>{`
-          ${EMOJI_MOODS.map((_, index) => {
+          ${selectedEmojis.map((_, index) => {
             const glowColor = generateGlowColors[index];
             const glowSize = emojiGlowSizes[index];
             return `
