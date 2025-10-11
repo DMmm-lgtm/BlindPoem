@@ -1173,7 +1173,7 @@ function App() {
               const shouldKeep = isFirstLine || isLastLine;
               
               // 最终位置
-              const finalBottom = isFirstLine ? 4 : 2; // 第1句4rem，最后1句2rem
+              const finalBottom = isFirstLine ? 5 : 3; // 第1句5rem，最后1句3rem
               
               return (
                 <div
@@ -1186,8 +1186,8 @@ function App() {
                     fontFamily: 'QianTuBiFeng, sans-serif',
                     color: '#ffd700',
                     textAlign: 'center',
-                    whiteSpace: isSmallMobile ? 'normal' : 'nowrap',
-                    maxWidth: isMobile ? '90vw' : 'none',
+                    whiteSpace: 'nowrap', // 所有设备都不换行
+                    maxWidth: isMobile ? '95vw' : 'none', // 移动端增大容器宽度到95vw
                     // 阶段1：逐行淡入，停留在初始位置（根据字符数分配时间）
                     ...(welcomePhase === 'lines' && {
                       top: `${initialTop}%`,
@@ -1213,7 +1213,7 @@ function App() {
                       fontSize: bottomPoemFontSize,
                       transform: 'translateX(-50%)',
                       animation: `welcomeLineFadeInBottom 1.5s ease-out ${isFirstLine ? 0 : 1.4}s forwards`,
-                      maxWidth: isMobile ? '90vw' : 'none',
+                      maxWidth: isMobile ? '95vw' : 'none', // 移动端增大容器宽度
                     }),
                     // 其他句子保持淡出状态
                     ...(welcomePhase === 'complete' && !shouldKeep && {
@@ -1244,14 +1244,33 @@ function App() {
                   maxWidth: isMobile ? '90vw' : 'none',
                   opacity: 0,
                   animation: 'welcomeLineAppear 2s ease-out forwards',
+                  lineHeight: isMobile ? '1.6' : 'normal', // 移动端增加行距
                 }}
               >
-                在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
-                <span className="dots-animation">
-                  <span className="dot1">.</span>
-                  <span className="dot2">.</span>
-                  <span className="dot3">.</span>
-                </span>
+                {/* PC端：一行显示 */}
+                {!isMobile && (
+                  <>
+                    在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
+                    <span className="dots-animation">
+                      <span className="dot1">.</span>
+                      <span className="dot2">.</span>
+                      <span className="dot3">.</span>
+                    </span>
+                  </>
+                )}
+                {/* 移动端：分两行显示 */}
+                {isMobile && (
+                  <>
+                    在每一个瞬间的情绪里
+                    <br />
+                    都藏着一句等待被唤醒的诗
+                    <span className="dots-animation">
+                      <span className="dot1">.</span>
+                      <span className="dot2">.</span>
+                      <span className="dot3">.</span>
+                    </span>
+                  </>
+                )}
               </div>
             )}
             
@@ -1271,10 +1290,25 @@ function App() {
                   maxWidth: isMobile ? '90vw' : 'none',
                   opacity: 0.9,
                   animation: 'promptFadeOut 0.8s ease-out forwards',
+                  lineHeight: isMobile ? '1.6' : 'normal', // 移动端增加行距
                 }}
               >
-                在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
-                <span>...</span>
+                {/* PC端：一行显示 */}
+                {!isMobile && (
+                  <>
+                    在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
+                    <span>...</span>
+                  </>
+                )}
+                {/* 移动端：分两行显示 */}
+                {isMobile && (
+                  <>
+                    在每一个瞬间的情绪里
+                    <br />
+                    都藏着一句等待被唤醒的诗
+                    <span>...</span>
+                  </>
+                )}
               </div>
             )}
           </div>
