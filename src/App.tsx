@@ -158,6 +158,9 @@ function App() {
   const [showPrompt, setShowPrompt] = useState(false);  // 控制提示词显示（初始为false）
   const [showPromptAnimation, setShowPromptAnimation] = useState(false);  // 控制提示词淡入动画
   
+  // 入场动画定时器引用（用于跳过功能）
+  const welcomeTimersRef = useRef<number[]>([]);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [poemData, setPoemData] = useState<{
     content: string;
@@ -266,30 +269,59 @@ function App() {
     }
   }, [showQRCode]);
 
+  // 🎯 跳过入场动画功能
+  const skipWelcomeAnimation = useCallback(() => {
+    // 只在入场诗淡入或淡出阶段可以跳过
+    if (welcomePhase === 'lines' || welcomePhase === 'sliding') {
+      console.log('⏭️ 用户点击跳过入场动画');
+      
+      // 清除所有入场动画定时器
+      welcomeTimersRef.current.forEach(timer => clearTimeout(timer));
+      welcomeTimersRef.current = [];
+      
+      // 直接跳转到底部诗句淡入阶段
+      setWelcomePhase('complete');
+      
+      // 立即触发Emoji淡入
+      setEmojisVisible(true);
+      
+      // Emoji淡入3秒后触发提示词
+      const promptTimer = window.setTimeout(() => {
+        setShowPrompt(true);
+        setShowPromptAnimation(true);
+      }, 3000);
+      welcomeTimersRef.current.push(promptTimer);
+    }
+  }, [welcomePhase]);
+
   // 入场动画时间控制
   useMemo(() => {
     // 约11秒：8行诗句淡入完成（按字符数分配时间 + 每句0.5秒delay）
     // 停留2秒，让用户欣赏完整诗句
     // 13秒：开始淡出阶段
-    setTimeout(() => {
+    const timer1 = window.setTimeout(() => {
       setWelcomePhase('sliding');
     }, 13000);
+    welcomeTimersRef.current.push(timer1);
     
     // 14.5秒：淡出完成后，底部诗句开始淡入
-    setTimeout(() => {
+    const timer2 = window.setTimeout(() => {
       setWelcomePhase('complete');
     }, 14500);
+    welcomeTimersRef.current.push(timer2);
     
     // 15.8秒：Emoji开始淡入
-    setTimeout(() => {
+    const timer3 = window.setTimeout(() => {
       setEmojisVisible(true);
     }, 15800);
+    welcomeTimersRef.current.push(timer3);
     
     // 18.8秒：Emoji淡入完成后，提示词开始淡入
-    setTimeout(() => {
+    const timer4 = window.setTimeout(() => {
       setShowPrompt(true);
       setShowPromptAnimation(true);
     }, 18800);
+    welcomeTimersRef.current.push(timer4);
     
     // 不再隐藏欢迎屏幕，让入场诗一直保持在背景
     // setTimeout(() => {
@@ -969,6 +1001,7 @@ function App() {
       {/* 入场欢迎屏幕 */}
       {showWelcome && (
         <div
+          onClick={skipWelcomeAnimation}
           style={{
             position: 'fixed',
             inset: 0,
@@ -978,7 +1011,9 @@ function App() {
             alignItems: 'center',
             justifyContent: 'center',
             pointerEvents: welcomePhase === 'complete' ? 'none' : 'auto',  // 完成后不阻挡交互
+            cursor: welcomePhase === 'complete' ? 'default' : 'pointer',  // 可跳过时显示手型
           }}
+          title={welcomePhase !== 'complete' ? '点击跳过入场动画' : ''}
         >
           {/* 入场诗句 */}
           <div
@@ -1097,6 +1132,26 @@ function App() {
               >
                 在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
                 <span>...</span>
+              </div>
+            )}
+            
+            {/* 跳过入场动画提示 */}
+            {(welcomePhase === 'lines' || welcomePhase === 'sliding') && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: '2rem',
+                  bottom: '2rem',
+                  fontSize: '1rem',
+                  fontFamily: 'QianTuBiFeng, sans-serif',
+                  color: 'rgba(255, 215, 0, 0.5)',
+                  textAlign: 'right',
+                  opacity: 0,
+                  animation: 'skipHintFadeIn 1s ease-out 2s forwards',
+                  pointerEvents: 'none',
+                }}
+              >
+                点击屏幕跳过 ⏭️
               </div>
             )}
           </div>
