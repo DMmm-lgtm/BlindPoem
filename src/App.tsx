@@ -414,8 +414,11 @@ function App() {
   const particleAnimationRef = useRef<number>(0);
   const startTimeRef = useRef<number>(Date.now());
 
-  // Canvas 渲染循环 - 三层粒子呼吸动画
+  // Canvas 渲染循环 - 三层粒子呼吸动画（仅PC端）
   useEffect(() => {
+    // 移动端使用CSS粒子，跳过Canvas渲染
+    if (isMobile) return;
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -646,6 +649,25 @@ function App() {
     };
   }, [particleSequences, meteorParticles, particlePositionOverrides, isMobile, isSkipped]);
 
+  // 🎯 移动端Emoji CSS动画参数（小范围漂浮 + 轻微旋转）
+  const mobileEmojiAnimations = useMemo(() => {
+    return selectedEmojis.map(() => ({
+      // 随机移动路径（小范围，不会飞出屏幕）
+      path1X: (Math.random() - 0.5) * 30,  // -15px 到 +15px
+      path1Y: (Math.random() - 0.5) * 30,
+      path2X: (Math.random() - 0.5) * 30,
+      path2Y: (Math.random() - 0.5) * 30,
+      path3X: (Math.random() - 0.5) * 30,
+      path3Y: (Math.random() - 0.5) * 30,
+      // 随机轻微旋转角度
+      rotate1: (Math.random() - 0.5) * 20,  // -10deg 到 +10deg
+      rotate2: (Math.random() - 0.5) * 20,
+      rotate3: (Math.random() - 0.5) * 20,
+      // 随机动画周期（60-120秒）
+      duration: 60 + Math.random() * 60,
+    }));
+  }, [selectedEmojis]);
+
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
     const colors = [
@@ -789,8 +811,11 @@ function App() {
     }
   }, [welcomePhase, physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
 
-  // 初始化emoji物理属性（淡入完成后启动）
+  // 初始化emoji物理属性（淡入完成后启动，仅PC端）
   useEffect(() => {
+    // 移动端使用CSS动画，不需要物理引擎
+    if (isMobile) return;
+    
     if (!physicsEnabled && emojiPhysics.length === 0) {
       // 等待emoji淡入完成后启动物理引擎
       setTimeout(() => {
@@ -818,7 +843,7 @@ function App() {
         console.log('✅ 物理引擎已启动（emoji淡入时）');
       }, 15800); // 15.8秒emoji开始淡入时立即启动物理引擎
     }
-  }, [physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
+  }, [physicsEnabled, emojiPhysics.length, emojiInitialPositions, isMobile]);
 
   // 物理引擎 - 超级缓慢移动和反弹 + emoji间碰撞
   useEffect(() => {
@@ -1424,18 +1449,59 @@ function App() {
         />
       </div>
 
-      {/* Canvas 粒子系统 - 120个星光粒子 */}
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 2,
-          pointerEvents: 'none',
-          willChange: 'transform, opacity',
-          backfaceVisibility: 'hidden',
-        }}
-      />
+      {/* Canvas 粒子系统 - PC端 */}
+      {!isMobile && (
+        <canvas
+          ref={canvasRef}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2,
+            pointerEvents: 'none',
+            willChange: 'transform, opacity',
+            backfaceVisibility: 'hidden',
+          }}
+        />
+      )}
+
+      {/* CSS 粒子系统 - 移动端性能优化 */}
+      {isMobile && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2, pointerEvents: 'none' }}>
+          {[...particleSequences.backLayer, ...particleSequences.midLayer, ...particleSequences.frontLayer].map((particle, index) => (
+            <div
+              key={particle.id}
+              style={{
+                position: 'absolute',
+                left: `${particle.x * 100}%`,
+                top: `${particle.y * 100}%`,
+                width: `${particle.size}px`,
+                height: `${particle.size}px`,
+                borderRadius: '50%',
+                background: `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${particle.baseOpacity})`,
+                opacity: 0,
+                animation: `particleFadeIn ${particle.layer === 'back' ? 3 : particle.layer === 'mid' ? 4 : 5}s ease-out ${particle.fadeInDelay}s forwards, particleTwinkle-${index} ${particle.holdDuration}s ease-in-out ${particle.flashPhase + particle.fadeInDelay}s infinite`,
+                transform: 'translate(-50%, -50%)',
+                willChange: 'opacity',
+              }}
+            />
+          ))}
+          
+          {/* 动态生成每个粒子的闪烁动画 */}
+          <style>{`
+            ${[...particleSequences.backLayer, ...particleSequences.midLayer, ...particleSequences.frontLayer].map((p, i) => {
+              const flashRatio = p.flashDuration / (p.flashDuration + p.holdDuration);
+              return `
+                @keyframes particleTwinkle-${i} {
+                  0% { opacity: ${p.opacityMin}; }
+                  ${(flashRatio * 50).toFixed(1)}% { opacity: ${p.opacityMax}; }
+                  ${(flashRatio * 100).toFixed(1)}% { opacity: ${p.opacityMin}; }
+                  100% { opacity: ${p.opacityMin}; }
+                }
+              `;
+            }).join('\n')}
+          `}</style>
+        </div>
+      )}
 
       {/* Emoji 按钮区域 - 淡入后物理运动 */}
       <div 
@@ -1453,9 +1519,10 @@ function App() {
           const glowSize = emojiGlowSizes[index];
           const initialPos = emojiInitialPositions[index];
           const physics = emojiPhysics[index];
+          const mobileAnim = mobileEmojiAnimations[index];
           
-          // 使用物理位置（如果已启动）或初始位置
-          const usePhysics = physicsEnabled && physics;
+          // PC端使用物理引擎，移动端使用CSS动画
+          const usePhysics = !isMobile && physicsEnabled && physics;
           
           return (
             <button
@@ -1464,7 +1531,7 @@ function App() {
               className="cursor-pointer"
               style={{
                 position: 'absolute',
-                // 淡入阶段用百分比位置，物理阶段用像素位置
+                // PC端：物理位置，移动端：CSS动画位置
                 ...(usePhysics ? {
                   left: `${physics.x}px`,
                   top: `${physics.y}px`,
@@ -1481,10 +1548,12 @@ function App() {
                 opacity: emojisVisible ? 1 : 0,
                 filter: `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`,
                 animation: emojisVisible 
-                  ? `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`
+                  ? isMobile
+                    ? `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiFloat-${index} ${mobileAnim.duration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite, emojiGlow-${index} ${glowDuration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`
+                    : `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`
                   : 'none',
                 transition: 'filter 0.3s ease',
-                willChange: usePhysics ? 'transform, filter' : 'filter',
+                willChange: usePhysics ? 'transform, filter' : isMobile ? 'transform, filter' : 'filter',
               }}
               onMouseEnter={(e) => {
                 // PC端：增强辉光效果
@@ -1515,11 +1584,12 @@ function App() {
           );
         })}
         
-        {/* 动态生成每个emoji的薄层辉光呼吸动画 */}
+        {/* 动态生成每个emoji的辉光呼吸动画和移动端漂浮动画 */}
         <style>{`
           ${selectedEmojis.map((_, index) => {
             const glowColor = generateGlowColors[index];
             const glowSize = emojiGlowSizes[index];
+            const mobileAnim = mobileEmojiAnimations[index];
             return `
               @keyframes emojiGlow-${index} {
                 0%, 100% {
@@ -1527,6 +1597,22 @@ function App() {
                 }
                 50% {
                   filter: drop-shadow(0 0 ${glowSize.maxSize}px rgba(${glowColor}, ${glowSize.maxOpacity}));
+                }
+              }
+              
+              /* 移动端emoji漂浮动画（小范围移动 + 轻微旋转） */
+              @keyframes emojiFloat-${index} {
+                0%, 100% {
+                  transform: translate(-50%, -50%) rotate(0deg);
+                }
+                25% {
+                  transform: translate(calc(-50% + ${mobileAnim.path1X}px), calc(-50% + ${mobileAnim.path1Y}px)) rotate(${mobileAnim.rotate1}deg);
+                }
+                50% {
+                  transform: translate(calc(-50% + ${mobileAnim.path2X}px), calc(-50% + ${mobileAnim.path2Y}px)) rotate(${mobileAnim.rotate2}deg);
+                }
+                75% {
+                  transform: translate(calc(-50% + ${mobileAnim.path3X}px), calc(-50% + ${mobileAnim.path3Y}px)) rotate(${mobileAnim.rotate3}deg);
                 }
               }
             `;
