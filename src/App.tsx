@@ -664,6 +664,23 @@ function App() {
     }));
   }, [selectedEmojis]);
 
+  // 移动端轻量漂浮：只做 transform，错峰慢速，小范围移动。
+  const mobileEmojiAnimations = useMemo(() => {
+    return selectedEmojis.map((_, index) => ({
+      path1X: (Math.random() - 0.5) * (isSmallMobile ? 16 : 22),
+      path1Y: (Math.random() - 0.5) * (isSmallMobile ? 18 : 24),
+      path2X: (Math.random() - 0.5) * (isSmallMobile ? 20 : 28),
+      path2Y: (Math.random() - 0.5) * (isSmallMobile ? 20 : 28),
+      path3X: (Math.random() - 0.5) * (isSmallMobile ? 14 : 20),
+      path3Y: (Math.random() - 0.5) * (isSmallMobile ? 16 : 22),
+      rotate1: (Math.random() - 0.5) * 10,
+      rotate2: (Math.random() - 0.5) * 12,
+      rotate3: (Math.random() - 0.5) * 10,
+      duration: 42 + Math.random() * 38,
+      delay: 0.35 * index + Math.random() * 1.4,
+    }));
+  }, [selectedEmojis, isSmallMobile]);
+
   // Emoji物理系统
   interface EmojiPhysics {
     x: number;
@@ -1437,6 +1454,7 @@ function App() {
           const glowSize = emojiGlowSizes[index];
           const initialPos = emojiInitialPositions[index];
           const physics = emojiPhysics[index];
+          const mobileAnim = mobileEmojiAnimations[index];
           
           // PC端使用物理引擎，移动端使用CSS动画
           const usePhysics = !isMobile && physicsEnabled && physics;
@@ -1466,11 +1484,11 @@ function App() {
                 filter: `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`,
                 animation: emojisVisible 
                   ? isMobile
-                    ? `emojiSimpleFadeIn ${isSkipped ? '1.2s' : '1.8s'} ease-out forwards`
+                    ? `emojiSimpleFadeIn ${isSkipped ? '1.2s' : '1.8s'} ease-out forwards, emojiMobileFloat-${index} ${mobileAnim.duration}s ease-in-out ${isSkipped ? 1.2 + mobileAnim.delay : 1.8 + mobileAnim.delay}s infinite`
                     : `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`
                   : 'none',
                 transition: 'filter 0.3s ease',
-                willChange: usePhysics ? 'transform, filter' : isMobile ? 'opacity' : 'filter',
+                willChange: usePhysics ? 'transform, filter' : isMobile ? 'transform, opacity' : 'filter',
               }}
               onMouseEnter={(e) => {
                 // PC端：增强辉光效果
@@ -1514,6 +1532,30 @@ function App() {
                   }
                   50% {
                     filter: drop-shadow(0 0 ${glowSize.maxSize}px rgba(${glowColor}, ${glowSize.maxOpacity}));
+                  }
+                }
+              `;
+            }).join('\n')}
+          `}</style>
+        )}
+
+        {isMobile && (
+          <style>{`
+            ${selectedEmojis.map((_, index) => {
+              const mobileAnim = mobileEmojiAnimations[index];
+              return `
+                @keyframes emojiMobileFloat-${index} {
+                  0%, 100% {
+                    transform: translate(-50%, -50%) rotate(0deg);
+                  }
+                  24% {
+                    transform: translate(calc(-50% + ${mobileAnim.path1X}px), calc(-50% + ${mobileAnim.path1Y}px)) rotate(${mobileAnim.rotate1}deg);
+                  }
+                  52% {
+                    transform: translate(calc(-50% + ${mobileAnim.path2X}px), calc(-50% + ${mobileAnim.path2Y}px)) rotate(${mobileAnim.rotate2}deg);
+                  }
+                  78% {
+                    transform: translate(calc(-50% + ${mobileAnim.path3X}px), calc(-50% + ${mobileAnim.path3Y}px)) rotate(${mobileAnim.rotate3}deg);
                   }
                 }
               `;
