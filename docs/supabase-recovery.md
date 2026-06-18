@@ -1,0 +1,64 @@
+# Supabase Recovery
+
+BlindPoem can run without Supabase, but a working Supabase project lets the site keep a shared poem pool across visitors.
+
+## 1. Create a new Supabase project
+
+Create a new project in Supabase, then open the SQL editor and run:
+
+```sql
+-- supabase/schema.sql
+```
+
+Copy the full contents of `supabase/schema.sql` into the SQL editor and run it.
+
+## 2. Configure local development
+
+Create `.env.local` in the project root:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+Do not commit `.env.local`.
+
+## 3. Verify the database
+
+Check read access:
+
+```bash
+npm run db:check
+```
+
+Check read and insert access:
+
+```bash
+npm run db:check -- --write
+```
+
+Expected result:
+
+```text
+Read check passed.
+Write check passed.
+```
+
+## 4. Configure Vercel
+
+In the Vercel project settings, add:
+
+```bash
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+Then redeploy.
+
+## Fallback behavior
+
+If Supabase is missing or fails, the site will:
+
+- save newly generated poems to browser localStorage;
+- read fallback poems from localStorage first;
+- fall back to the built-in poem list if localStorage is empty.

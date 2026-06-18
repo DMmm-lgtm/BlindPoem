@@ -125,14 +125,19 @@ const EMOJI_MOODS = [
 ];
 
 function App() {
-  // 📱 响应式屏幕尺寸检测
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [isSmallMobile, setIsSmallMobile] = useState(window.innerWidth <= 480);
+  // 📱 移动设备检测：桌面浏览器即使窗口较窄，也保留完整动效。
+  const getIsTouchDevice = () =>
+    window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768 && getIsTouchDevice());
+  const [isSmallMobile, setIsSmallMobile] = useState(window.innerWidth <= 480 && getIsTouchDevice());
+  const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth <= 760);
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobile(window.innerWidth <= 768);
-      setIsSmallMobile(window.innerWidth <= 480);
+      const isTouchDevice = getIsTouchDevice();
+      setIsMobile(window.innerWidth <= 768 && isTouchDevice);
+      setIsSmallMobile(window.innerWidth <= 480 && isTouchDevice);
+      setIsNarrowScreen(window.innerWidth <= 760);
     };
     
     window.addEventListener('resize', handleResize);
@@ -213,9 +218,19 @@ function App() {
     startY: number;
     direction: number; // 流星方向：0-右下, 1-左下, 2-右上, 3-左上, 4-正下, 5-正右
   }>>(new Map());
+  const meteorParticlesRef = useRef(meteorParticles);
   
   // 粒子位置覆盖（用于流星后在新位置重生）
   const [particlePositionOverrides, setParticlePositionOverrides] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const particlePositionOverridesRef = useRef(particlePositionOverrides);
+
+  useEffect(() => {
+    meteorParticlesRef.current = meteorParticles;
+  }, [meteorParticles]);
+
+  useEffect(() => {
+    particlePositionOverridesRef.current = particlePositionOverrides;
+  }, [particlePositionOverrides]);
 
   // 入场诗句
   const welcomeLines = [
@@ -334,14 +349,13 @@ function App() {
   }, []);
 
   // 🌟 三层星空粒子系统 - 使用 useMemo 缓存，避免闪烁
-  // 移动端优化：减少粒子数量
+  // 移动端只保留少量 Canvas 粒子，避免大量 DOM 动画导致发热卡顿。
   const particleSequences = useMemo(() => {
-    // 根据屏幕尺寸调整粒子数量（移动端性能优化）
     const particleCount = isSmallMobile ? 
-      { front: 24, mid: 20, back: 16 } :  // 超小屏：60个
+      { front: 10, mid: 8, back: 6 } :
       isMobile ? 
-      { front: 32, mid: 28, back: 20 } :  // 移动端：80个
-      { front: 40, mid: 40, back: 40 };   // PC端：120个（不变）
+      { front: 14, mid: 10, back: 8 } :
+      { front: 40, mid: 40, back: 40 };
     
     // 生成指定层级的粒子
     const generateParticles = (
@@ -403,7 +417,7 @@ function App() {
     const backLayer = generateParticles(particleCount.back, 'back', 2, 5);
     
     const deviceType = isSmallMobile ? '超小屏' : isMobile ? '移动端' : 'PC端';
-    const fps = isMobile ? '30fps' : '60fps';
+    const fps = isSmallMobile ? '18fps' : isMobile ? '24fps' : '60fps';
     console.log(`✨ 粒子系统 (${deviceType}, ${fps}): 前景${particleCount.front}个 + 中景${particleCount.mid}个 + 背景${particleCount.back}个 = 总计${particleCount.front + particleCount.mid + particleCount.back}个`);
     
     return { frontLayer, midLayer, backLayer };
@@ -414,11 +428,8 @@ function App() {
   const particleAnimationRef = useRef<number>(0);
   const startTimeRef = useRef<number>(Date.now());
 
-  // Canvas 渲染循环 - 三层粒子呼吸动画（仅PC端）
+  // Canvas 渲染循环 - 三层粒子呼吸动画 + 流星
   useEffect(() => {
-    // 移动端使用CSS粒子，跳过Canvas渲染
-    if (isMobile) return;
-    
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -440,15 +451,13 @@ function App() {
       ...particleSequences.frontLayer,
     ];
 
-    // 移动端帧率控制（性能优化）
     let lastFrameTime = 0;
-    const targetFPS = isMobile ? 30 : 60;
+    const targetFPS = isSmallMobile ? 18 : isMobile ? 24 : 60;
     const frameInterval = 1000 / targetFPS;
 
     // 渲染循环
     const render = (timestamp: number = Date.now()) => {
-      // 移动端帧率限制
-      if (isMobile && timestamp - lastFrameTime < frameInterval) {
+      if (timestamp - lastFrameTime < frameInterval) {
         particleAnimationRef.current = requestAnimationFrame(render);
         return;
       }
@@ -468,7 +477,7 @@ function App() {
         if (meteorInfo) {
           // 绘制流星效果
           const meteorElapsed = (currentTime - meteorInfo.startTime) / 1000; // 流星经过时间（秒）
-          const meteorDuration = 2; // 流星持续2秒
+          const meteorDuration = 1.15; // 流星短促划过
           
           if (meteorElapsed < meteorDuration) {
             const meteorProgress = meteorElapsed / meteorDuration; // 0-1
@@ -477,88 +486,64 @@ function App() {
             const startX = meteorInfo.startX;
             const startY = meteorInfo.startY;
             
-            // 根据方向计算流星终点（6种随机路径）
-            let endX, endY;
+            // 更接近真实流星：从天空上方斜向掠过，轨迹短而克制。
+            let travelX, travelY;
             switch (meteorInfo.direction) {
-              case 0: // 右下角
-                endX = canvas.width + 100;
-                endY = canvas.height + 100;
+              case 0:
+                travelX = canvas.width * 0.34;
+                travelY = canvas.height * 0.24;
                 break;
-              case 1: // 左下角
-                endX = -100;
-                endY = canvas.height + 100;
+              case 1:
+                travelX = -canvas.width * 0.34;
+                travelY = canvas.height * 0.24;
                 break;
-              case 2: // 右上角
-                endX = canvas.width + 100;
-                endY = -100;
-                break;
-              case 3: // 左上角
-                endX = -100;
-                endY = -100;
-                break;
-              case 4: // 正下方
-                endX = startX;
-                endY = canvas.height + 100;
-                break;
-              case 5: // 正右方
-                endX = canvas.width + 100;
-                endY = startY;
+              case 2:
+                travelX = canvas.width * 0.26;
+                travelY = canvas.height * 0.18;
                 break;
               default:
-                endX = canvas.width + 100;
-                endY = canvas.height + 100;
+                travelX = -canvas.width * 0.26;
+                travelY = canvas.height * 0.18;
             }
+            const endX = startX + travelX;
+            const endY = startY + travelY;
             
             // 当前流星位置（线性插值）
-            const currentX = startX + (endX - startX) * meteorProgress;
-            const currentY = startY + (endY - startY) * meteorProgress;
+            const easedProgress = 1 - Math.pow(1 - meteorProgress, 2);
+            const currentX = startX + (endX - startX) * easedProgress;
+            const currentY = startY + (endY - startY) * easedProgress;
             
-            // 流星透明度（先增强后减弱）
-            const meteorOpacity = meteorProgress < 0.2 
-              ? meteorProgress * 5  // 0-0.2: 快速增强
-              : 1 - (meteorProgress - 0.2) / 0.8; // 0.2-1: 缓慢减弱
+            // 流星透明度：快速出现，随后柔和消失。
+            const meteorOpacity = meteorProgress < 0.12
+              ? meteorProgress / 0.12
+              : Math.max(0, 1 - (meteorProgress - 0.12) / 0.88);
             
-            // 绘制流星拖尾（多个圆形）
-            const trailLength = 8; // 拖尾长度
-            for (let i = 0; i < trailLength; i++) {
-              const trailProgress = i / trailLength;
-              const trailX = currentX - (currentX - startX) * trailProgress * 0.3;
-              const trailY = currentY - (currentY - startY) * trailProgress * 0.3;
-              const trailOpacity = meteorOpacity * (1 - trailProgress) * 0.6;
-              const trailSize = particle.size * (1 + meteorProgress * 2) * (1 - trailProgress * 0.5);
-              
-              ctx.beginPath();
-              ctx.arc(trailX, trailY, trailSize, 0, Math.PI * 2);
-              ctx.fillStyle = `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${trailOpacity})`;
-              ctx.fill();
-              
-              // 拖尾光晕
-              const trailGlowRadius = trailSize * 2;
-              const trailGradient = ctx.createRadialGradient(trailX, trailY, 0, trailX, trailY, trailGlowRadius);
-              trailGradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${trailOpacity * 0.8})`);
-              trailGradient.addColorStop(0.5, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${trailOpacity * 0.4})`);
-              trailGradient.addColorStop(1, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, 0)`);
-              ctx.fillStyle = trailGradient;
-              ctx.beginPath();
-              ctx.arc(trailX, trailY, trailGlowRadius, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            
-            // 绘制流星主体（更亮更大）
+            const vectorLength = Math.hypot(endX - startX, endY - startY) || 1;
+            const unitX = (endX - startX) / vectorLength;
+            const unitY = (endY - startY) / vectorLength;
+            const trailLength = Math.min(canvas.width, canvas.height) * (isMobile ? 0.24 : 0.2);
+            const tailX = currentX - unitX * trailLength;
+            const tailY = currentY - unitY * trailLength;
+
+            const trailGradient = ctx.createLinearGradient(tailX, tailY, currentX, currentY);
+            trailGradient.addColorStop(0, 'rgba(220, 235, 255, 0)');
+            trailGradient.addColorStop(0.72, `rgba(220, 235, 255, ${meteorOpacity * 0.22})`);
+            trailGradient.addColorStop(1, `rgba(255, 255, 255, ${meteorOpacity * 0.82})`);
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.lineWidth = isMobile ? 1 : 1.25;
+            ctx.strokeStyle = trailGradient;
+            ctx.shadowColor = `rgba(190, 215, 255, ${meteorOpacity * 0.35})`;
+            ctx.shadowBlur = isMobile ? 3 : 5;
             ctx.beginPath();
-            ctx.arc(currentX, currentY, particle.size * (1 + meteorProgress * 2), 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${meteorOpacity})`;
-            ctx.fill();
-            
-            // 流星主体光晕
-            const meteorGlowRadius = particle.size * (1 + meteorProgress * 2) * 3;
-            const meteorGradient = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, meteorGlowRadius);
-            meteorGradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${meteorOpacity})`);
-            meteorGradient.addColorStop(0.3, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${meteorOpacity * 0.6})`);
-            meteorGradient.addColorStop(1, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, 0)`);
-            ctx.fillStyle = meteorGradient;
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(currentX, currentY);
+            ctx.stroke();
+            ctx.restore();
+
             ctx.beginPath();
-            ctx.arc(currentX, currentY, meteorGlowRadius, 0, Math.PI * 2);
+            ctx.arc(currentX, currentY, isMobile ? 1.15 : 1.4, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${meteorOpacity * 0.9})`;
             ctx.fill();
           }
           
@@ -647,26 +632,7 @@ function App() {
         cancelAnimationFrame(particleAnimationRef.current);
       }
     };
-  }, [particleSequences, meteorParticles, particlePositionOverrides, isMobile, isSkipped]);
-
-  // 🎯 移动端Emoji CSS动画参数（小范围漂浮 + 轻微旋转）
-  const mobileEmojiAnimations = useMemo(() => {
-    return selectedEmojis.map(() => ({
-      // 随机移动路径（小范围，不会飞出屏幕）
-      path1X: (Math.random() - 0.5) * 30,  // -15px 到 +15px
-      path1Y: (Math.random() - 0.5) * 30,
-      path2X: (Math.random() - 0.5) * 30,
-      path2Y: (Math.random() - 0.5) * 30,
-      path3X: (Math.random() - 0.5) * 30,
-      path3Y: (Math.random() - 0.5) * 30,
-      // 随机轻微旋转角度
-      rotate1: (Math.random() - 0.5) * 20,  // -10deg 到 +10deg
-      rotate2: (Math.random() - 0.5) * 20,
-      rotate3: (Math.random() - 0.5) * 20,
-      // 随机动画周期（60-120秒）
-      duration: 60 + Math.random() * 60,
-    }));
-  }, [selectedEmojis]);
+  }, [particleSequences, meteorParticles, particlePositionOverrides, isMobile, isSmallMobile, isSkipped]);
 
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
@@ -706,6 +672,7 @@ function App() {
     vy: number;
     rotation: number;
     rotationSpeed: number;
+    startAt: number;
   }
 
   const [emojiPhysics, setEmojiPhysics] = useState<EmojiPhysics[]>([]);
@@ -751,6 +718,28 @@ function App() {
     return shuffleArray(allPositions);
   }, []);
 
+  const createEmojiPhysics = useCallback((): EmojiPhysics[] => {
+    const now = Date.now();
+    return emojiInitialPositions.map((pos, index) => {
+      const x = (parseFloat(pos.left) / 100) * window.innerWidth;
+      const y = (parseFloat(pos.top) / 100) * window.innerHeight;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.2 + Math.random() * 0.3;
+      const batchDelay = Math.floor(index / 5) * 650;
+      const randomDelay = Math.random() * 850;
+      
+      return {
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        rotation: Math.random() * 360,
+        rotationSpeed: (Math.random() - 0.5) * 0.3,
+        startAt: now + batchDelay + randomDelay,
+      };
+    });
+  }, [emojiInitialPositions]);
+
   // 🎯 跳过入场动画功能
   const skipWelcomeAnimation = useCallback(() => {
     // 只在入场诗淡入或淡出阶段可以跳过
@@ -784,32 +773,16 @@ function App() {
         setShowPrompt(true);
         setShowPromptAnimation(true);
         
-        // 如果物理引擎还未启动，立即启动
-        if (!physicsEnabled && emojiPhysics.length === 0) {
-          const physics: EmojiPhysics[] = emojiInitialPositions.map((pos) => {
-            const x = (parseFloat(pos.left) / 100) * window.innerWidth;
-            const y = (parseFloat(pos.top) / 100) * window.innerHeight;
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 0.2 + Math.random() * 0.3;
-            
-            return {
-              x,
-              y,
-              vx: Math.cos(angle) * speed,
-              vy: Math.sin(angle) * speed,
-              rotation: Math.random() * 360,
-              rotationSpeed: (Math.random() - 0.5) * 0.3,
-            };
-          });
-          
-          setEmojiPhysics(physics);
+        // 桌面端才启动物理引擎；手机端保持静态按钮，避免持续重绘。
+        if (!isMobile && !physicsEnabled && emojiPhysics.length === 0) {
+          setEmojiPhysics(createEmojiPhysics());
           setPhysicsEnabled(true);
-          console.log('✅ Emoji淡入完成，物理引擎已启动');
+          console.log('✅ Emoji淡入完成，物理引擎将随机分批启动');
         }
       }, 2500);
       welcomeTimersRef.current.push(afterSkipTimer);
     }
-  }, [welcomePhase, physicsEnabled, emojiPhysics.length, emojiInitialPositions]);
+  }, [welcomePhase, physicsEnabled, emojiPhysics.length, createEmojiPhysics, isMobile]);
 
   // 初始化emoji物理属性（淡入完成后启动，仅PC端）
   useEffect(() => {
@@ -819,34 +792,16 @@ function App() {
     if (!physicsEnabled && emojiPhysics.length === 0) {
       // 等待emoji淡入完成后启动物理引擎
       setTimeout(() => {
-        const physics: EmojiPhysics[] = emojiInitialPositions.map((pos) => {
-          // 从当前位置开始
-          const x = (parseFloat(pos.left) / 100) * window.innerWidth;
-          const y = (parseFloat(pos.top) / 100) * window.innerHeight;
-          
-          // 缓慢的随机速度（0.2-0.5 px/frame）
-          const angle = Math.random() * Math.PI * 2;
-          const speed = 0.2 + Math.random() * 0.3;
-          
-          return {
-            x,
-            y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            rotation: Math.random() * 360,
-            rotationSpeed: (Math.random() - 0.5) * 0.3, // 超慢旋转
-          };
-        });
-        
-        setEmojiPhysics(physics);
+        setEmojiPhysics(createEmojiPhysics());
         setPhysicsEnabled(true);
-        console.log('✅ 物理引擎已启动（emoji淡入时）');
+        console.log('✅ 物理引擎已启动，Emoji将随机分批动起来');
       }, 15800); // 15.8秒emoji开始淡入时立即启动物理引擎
     }
-  }, [physicsEnabled, emojiPhysics.length, emojiInitialPositions, isMobile]);
+  }, [physicsEnabled, emojiPhysics.length, createEmojiPhysics, isMobile]);
 
   // 物理引擎 - 超级缓慢移动和反弹 + emoji间碰撞
   useEffect(() => {
+    if (isMobile) return;
     if (!physicsEnabled || emojiPhysics.length === 0) return;
 
     const damping = 0.92; // 阻尼系数（碰撞后保留92%速度）
@@ -854,12 +809,13 @@ function App() {
     
     const updatePhysics = () => {
       setEmojiPhysics(prevPhysics => {
+        const now = Date.now();
         // 第一步：更新所有emoji的位置
         let newPhysics = prevPhysics.map((emoji, index) => {
-          let { x, y, vx, vy, rotation, rotationSpeed } = emoji;
+          let { x, y, vx, vy, rotation, rotationSpeed, startAt } = emoji;
           
-          // 如果当前emoji被鼠标悬停，跳过位置更新
-          if (index === hoveredEmojiIndex) {
+          // 未到启动时间或被鼠标悬停时，保持当前位置。
+          if (now < startAt || index === hoveredEmojiIndex) {
             return emoji; // 保持原位置，不移动
           }
           
@@ -892,11 +848,11 @@ function App() {
         if (!isMobile) {
           for (let i = 0; i < newPhysics.length; i++) {
             // 跳过被悬停的emoji
-            if (i === hoveredEmojiIndex) continue;
+            if (i === hoveredEmojiIndex || now < newPhysics[i].startAt) continue;
           
           for (let j = i + 1; j < newPhysics.length; j++) {
             // 跳过被悬停的emoji
-            if (j === hoveredEmojiIndex) continue;
+            if (j === hoveredEmojiIndex || now < newPhysics[j].startAt) continue;
             
             const emoji1 = newPhysics[i];
             const emoji2 = newPhysics[j];
@@ -906,8 +862,8 @@ function App() {
             const dy = emoji2.y - emoji1.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            // 碰撞检测：如果距离小于两个半径之和
-            const minDistance = emojiSize; // 两个emoji的半径之和
+            // 碰撞检测距离收近，让 Emoji 视觉上更贴近后再弹开。
+            const minDistance = emojiSize * 0.8;
             
             if (distance < minDistance && distance > 0) {
               // 发生碰撞！
@@ -974,30 +930,33 @@ function App() {
       ...particleSequences.backLayer,
     ];
     
+    const activeMeteors = meteorParticlesRef.current;
+    const positionOverrides = particlePositionOverridesRef.current;
     // 过滤出不是流星的粒子
-    const availableParticles = allParticles.filter(p => !meteorParticles.has(p.id));
+    const availableParticles = allParticles.filter(p => !activeMeteors.has(p.id));
     
     if (availableParticles.length > 0) {
       const randomParticle = availableParticles[Math.floor(Math.random() * availableParticles.length)];
       const canvas = canvasRef.current;
       
       if (canvas) {
-        // 获取粒子当前位置（优先使用覆盖位置）
-        const positionOverride = particlePositionOverrides.get(randomParticle.id);
+        const positionOverride = positionOverrides.get(randomParticle.id);
         const currentX = positionOverride ? positionOverride.x : randomParticle.x;
         const currentY = positionOverride ? positionOverride.y : randomParticle.y;
+        const startX = Math.random() * canvas.width;
+        const startY = Math.random() * canvas.height * 0.32 + canvas.height * 0.06;
         
-        // 随机选择流星方向（6种路径）
-        const randomDirection = Math.floor(Math.random() * 6);
-        const directionNames = ['右下角', '左下角', '右上角', '左上角', '正下方', '正右方'];
+        // 随机选择更自然的斜向下路径。
+        const randomDirection = Math.floor(Math.random() * 4);
+        const directionNames = ['右下斜掠', '左下斜掠', '短右下斜掠', '短左下斜掠'];
         
         // 记录流星起点和方向
         setMeteorParticles(prev => {
           const newMap = new Map(prev);
           newMap.set(randomParticle.id, {
             startTime: Date.now(),
-            startX: currentX * canvas.width,
-            startY: currentY * canvas.height,
+            startX,
+            startY,
             direction: randomDirection,
           });
           return newMap;
@@ -1005,7 +964,7 @@ function App() {
         
         console.log(`✨ 流星出现：${randomParticle.id}，方向：${directionNames[randomDirection]}`);
         
-        // 2秒后流星消失，粒子在新随机位置重生
+        // 流星消失后，原粒子在新随机位置重生。
         setTimeout(() => {
           // 生成新的随机位置（确保与当前位置不同）
           let newX, newY;
@@ -1029,18 +988,20 @@ function App() {
           });
           
           console.log(`🌟 流星消失，粒子在新位置重生：${randomParticle.id}，位置：(${(newX * 100).toFixed(1)}%, ${(newY * 100).toFixed(1)}%)`);
-        }, 2000);
+        }, 1200);
       }
     }
-  }, [particleSequences, meteorParticles, particlePositionOverrides]);
+  }, [particleSequences]);
 
-  // 流星效果：定期自动触发（20-60秒随机间隔）
+  // 流星效果：首次快速出现，之后低频随机出现
   useEffect(() => {
     let meteorTimer: number;
     
-    const scheduleMeteor = () => {
-      // 随机生成20-60秒的间隔
-      const randomInterval = 20000 + Math.random() * 40000; // 20000-60000毫秒
+    const scheduleMeteor = (isFirstRun = false) => {
+      // 首次更早出现，之后保持低频随机，避免长时间等不到流星。
+      const randomInterval = isFirstRun
+        ? 6000 + Math.random() * 4000
+        : 18000 + Math.random() * 24000;
       console.log(`🌠 下一次流星将在 ${(randomInterval / 1000).toFixed(1)} 秒后出现`);
       
       meteorTimer = window.setTimeout(() => {
@@ -1051,7 +1012,7 @@ function App() {
     };
     
     // 启动第一次流星调度
-    scheduleMeteor();
+    scheduleMeteor(true);
 
     return () => {
       if (meteorTimer) {
@@ -1072,11 +1033,8 @@ function App() {
       setIsPoemFadingOut(true);
       console.log('✅ 关闭按钮：诗句框开始淡出');
       
-      // 50%概率触发流星效果
-      if (Math.random() < 0.5) {
-        triggerMeteor();
-        console.log('🌠 诗句淡出时触发流星');
-      }
+      triggerMeteor();
+      console.log('🌠 关闭诗句时触发流星');
       
       // 0.8秒淡出动画完成后，真正关闭诗句框
       setTimeout(() => {
@@ -1105,11 +1063,8 @@ function App() {
       setIsPoemFadingOut(true);
       console.log('✅ 诗句框开始淡出');
       
-      // 50%概率触发流星效果
-      if (Math.random() < 0.5) {
-        triggerMeteor();
-        console.log('🌠 诗句淡出时触发流星');
-      }
+      triggerMeteor();
+      console.log('🌠 关闭诗句时触发流星');
       
       // 0.8秒淡出动画完成后，真正关闭诗句框
       setTimeout(() => {
@@ -1123,6 +1078,7 @@ function App() {
   // AI 调用核心逻辑
   const handleEmojiClick = async (keyword: string, mood: string) => {
     console.log('🎭 点击了 Emoji:', { keyword, mood });
+    triggerMeteor();
     setShowPrompt(false); // 隐藏提示词
     
     // 如果有诗句正在显示，先淡出
@@ -1144,11 +1100,8 @@ function App() {
       console.log('✅ 开始淡出诗句框...');
       setIsPoemFadingOut(true);
       
-      // 50%概率触发流星效果
-      if (Math.random() < 0.5) {
-        triggerMeteor();
-        console.log('🌠 诗句淡出时触发流星');
-      }
+      triggerMeteor();
+      console.log('🌠 诗句淡出时触发流星');
       
       // 等待诗句框淡出动画完成（0.8秒）
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -1310,15 +1263,15 @@ function App() {
                   fontFamily: 'QianTuBiFeng, sans-serif',
                   color: 'rgba(255, 215, 0, 0.8)',
                   textAlign: 'center',
-                  whiteSpace: isSmallMobile ? 'normal' : 'nowrap',
-                  maxWidth: isMobile ? '90vw' : 'none',
+                  whiteSpace: isNarrowScreen ? 'normal' : 'nowrap',
+                  maxWidth: isNarrowScreen ? '90vw' : 'none',
                   opacity: 0,
                   animation: 'welcomeLineAppear 2s ease-out forwards',
-                  lineHeight: isMobile ? '1.6' : 'normal', // 移动端增加行距
+                  lineHeight: isNarrowScreen ? '1.6' : 'normal',
                 }}
               >
-                {/* PC端：一行显示 */}
-                {!isMobile && (
+                {/* 宽屏：一行显示 */}
+                {!isNarrowScreen && (
                   <>
                     在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
                     <span className="dots-animation">
@@ -1328,8 +1281,8 @@ function App() {
                     </span>
                   </>
                 )}
-                {/* 移动端：分两行显示 */}
-                {isMobile && (
+                {/* 窄屏：分两行显示 */}
+                {isNarrowScreen && (
                   <>
                     在每一个瞬间的情绪里
                     <br />
@@ -1356,22 +1309,22 @@ function App() {
                   fontFamily: 'QianTuBiFeng, sans-serif',
                   color: 'rgba(255, 215, 0, 0.8)',
                   textAlign: 'center',
-                  whiteSpace: isSmallMobile ? 'normal' : 'nowrap',
-                  maxWidth: isMobile ? '90vw' : 'none',
+                  whiteSpace: isNarrowScreen ? 'normal' : 'nowrap',
+                  maxWidth: isNarrowScreen ? '90vw' : 'none',
                   opacity: 0.9,
                   animation: 'promptFadeOut 0.8s ease-out forwards',
-                  lineHeight: isMobile ? '1.6' : 'normal', // 移动端增加行距
+                  lineHeight: isNarrowScreen ? '1.6' : 'normal',
                 }}
               >
-                {/* PC端：一行显示 */}
-                {!isMobile && (
+                {/* 宽屏：一行显示 */}
+                {!isNarrowScreen && (
                   <>
                     在每一个瞬间的情绪里  都藏着一句等待被唤醒的诗
                     <span>...</span>
                   </>
                 )}
-                {/* 移动端：分两行显示 */}
-                {isMobile && (
+                {/* 窄屏：分两行显示 */}
+                {isNarrowScreen && (
                   <>
                     在每一个瞬间的情绪里
                     <br />
@@ -1392,7 +1345,9 @@ function App() {
           inset: 0,
           background: 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
           opacity: 0,
-          animation: 'backgroundFadeIn3s 3s ease-out forwards, dawnGradient 40s ease-in-out 3s infinite',
+          animation: isMobile
+            ? 'backgroundFadeIn3s 3s ease-out forwards'
+            : 'backgroundFadeIn3s 3s ease-out forwards, dawnGradient 40s ease-in-out 3s infinite',
           zIndex: 0,
         }}
       />
@@ -1405,103 +1360,66 @@ function App() {
             position: 'absolute',
             top: '50%',
             left: '50%',
-            width: '150vw',
-            height: '150vh',
+            width: isMobile ? '120vw' : '150vw',
+            height: isMobile ? '120vh' : '150vh',
             borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255, 215, 0, 0.15) 0%, transparent 70%)',
-            filter: 'blur(60px)',
-            animation: 'glow 12s ease-in-out 5s infinite',
-            willChange: 'transform, opacity',
+            background: `radial-gradient(circle, rgba(255, 215, 0, ${isMobile ? 0.09 : 0.15}) 0%, transparent 70%)`,
+            filter: `blur(${isMobile ? 28 : 60}px)`,
+            animation: isMobile ? 'none' : 'glow 12s ease-in-out 5s infinite',
+            willChange: isMobile ? 'auto' : 'transform, opacity',
             backfaceVisibility: 'hidden',
           }}
         />
         {/* 第二层光芒 */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            width: '180vw',
-            height: '180vh',
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%)',
-            filter: 'blur(80px)',
-            animation: 'glowSlow 18s ease-in-out 5s infinite',
-            willChange: 'transform, opacity',
-            backfaceVisibility: 'hidden',
-          }}
-        />
+        {!isMobile && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              width: '180vw',
+              height: '180vh',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%)',
+              filter: 'blur(80px)',
+              animation: 'glowSlow 18s ease-in-out 5s infinite',
+              willChange: 'transform, opacity',
+              backfaceVisibility: 'hidden',
+            }}
+          />
+        )}
         {/* 第三层光芒 */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            width: '200vw',
-            height: '200vh',
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255, 215, 0, 0.08) 0%, transparent 70%)',
-            filter: 'blur(100px)',
-            animation: 'glowSlowest 25s ease-in-out 5s infinite',
-            willChange: 'transform, opacity',
-            backfaceVisibility: 'hidden',
-          }}
-        />
+        {!isMobile && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              width: '200vw',
+              height: '200vh',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(255, 215, 0, 0.08) 0%, transparent 70%)',
+              filter: 'blur(100px)',
+              animation: 'glowSlowest 25s ease-in-out 5s infinite',
+              willChange: 'transform, opacity',
+              backfaceVisibility: 'hidden',
+            }}
+          />
+        )}
       </div>
 
-      {/* Canvas 粒子系统 - PC端 */}
-      {!isMobile && (
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 2,
-            pointerEvents: 'none',
-            willChange: 'transform, opacity',
-            backfaceVisibility: 'hidden',
-          }}
-        />
-      )}
-
-      {/* CSS 粒子系统 - 移动端性能优化 */}
-      {isMobile && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2, pointerEvents: 'none' }}>
-          {[...particleSequences.backLayer, ...particleSequences.midLayer, ...particleSequences.frontLayer].map((particle, index) => (
-            <div
-              key={particle.id}
-              style={{
-                position: 'absolute',
-                left: `${particle.x * 100}%`,
-                top: `${particle.y * 100}%`,
-                width: `${particle.size}px`,
-                height: `${particle.size}px`,
-                borderRadius: '50%',
-                background: `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${particle.baseOpacity})`,
-                opacity: 0,
-                animation: `particleFadeIn ${particle.layer === 'back' ? 3 : particle.layer === 'mid' ? 4 : 5}s ease-out ${particle.fadeInDelay}s forwards, particleTwinkle-${index} ${particle.holdDuration}s ease-in-out ${particle.flashPhase + particle.fadeInDelay}s infinite`,
-                transform: 'translate(-50%, -50%)',
-                willChange: 'opacity',
-              }}
-            />
-          ))}
-          
-          {/* 动态生成每个粒子的闪烁动画 */}
-          <style>{`
-            ${[...particleSequences.backLayer, ...particleSequences.midLayer, ...particleSequences.frontLayer].map((p, i) => {
-              const flashRatio = p.flashDuration / (p.flashDuration + p.holdDuration);
-              return `
-                @keyframes particleTwinkle-${i} {
-                  0% { opacity: ${p.opacityMin}; }
-                  ${(flashRatio * 50).toFixed(1)}% { opacity: ${p.opacityMax}; }
-                  ${(flashRatio * 100).toFixed(1)}% { opacity: ${p.opacityMin}; }
-                  100% { opacity: ${p.opacityMin}; }
-                }
-              `;
-            }).join('\n')}
-          `}</style>
-        </div>
-      )}
+      {/* Canvas 粒子系统 - 负责星空和流星；移动端低帧率、低粒子数 */}
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 2,
+          pointerEvents: 'none',
+          willChange: isMobile ? 'auto' : 'transform, opacity',
+          backfaceVisibility: 'hidden',
+        }}
+      />
 
       {/* Emoji 按钮区域 - 淡入后物理运动 */}
       <div 
@@ -1519,7 +1437,6 @@ function App() {
           const glowSize = emojiGlowSizes[index];
           const initialPos = emojiInitialPositions[index];
           const physics = emojiPhysics[index];
-          const mobileAnim = mobileEmojiAnimations[index];
           
           // PC端使用物理引擎，移动端使用CSS动画
           const usePhysics = !isMobile && physicsEnabled && physics;
@@ -1549,11 +1466,11 @@ function App() {
                 filter: `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`,
                 animation: emojisVisible 
                   ? isMobile
-                    ? `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiFloat-${index} ${mobileAnim.duration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite, emojiGlow-${index} ${glowDuration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`
+                    ? `emojiSimpleFadeIn ${isSkipped ? '1.2s' : '1.8s'} ease-out forwards`
                     : `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`
                   : 'none',
                 transition: 'filter 0.3s ease',
-                willChange: usePhysics ? 'transform, filter' : isMobile ? 'transform, filter' : 'filter',
+                willChange: usePhysics ? 'transform, filter' : isMobile ? 'opacity' : 'filter',
               }}
               onMouseEnter={(e) => {
                 // PC端：增强辉光效果
@@ -1584,40 +1501,25 @@ function App() {
           );
         })}
         
-        {/* 动态生成每个emoji的辉光呼吸动画和移动端漂浮动画 */}
-        <style>{`
-          ${selectedEmojis.map((_, index) => {
-            const glowColor = generateGlowColors[index];
-            const glowSize = emojiGlowSizes[index];
-            const mobileAnim = mobileEmojiAnimations[index];
-            return `
-              @keyframes emojiGlow-${index} {
-                0%, 100% {
-                  filter: drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}));
+        {/* 动态生成每个emoji的辉光呼吸动画（仅桌面端使用） */}
+        {!isMobile && (
+          <style>{`
+            ${selectedEmojis.map((_, index) => {
+              const glowColor = generateGlowColors[index];
+              const glowSize = emojiGlowSizes[index];
+              return `
+                @keyframes emojiGlow-${index} {
+                  0%, 100% {
+                    filter: drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}));
+                  }
+                  50% {
+                    filter: drop-shadow(0 0 ${glowSize.maxSize}px rgba(${glowColor}, ${glowSize.maxOpacity}));
+                  }
                 }
-                50% {
-                  filter: drop-shadow(0 0 ${glowSize.maxSize}px rgba(${glowColor}, ${glowSize.maxOpacity}));
-                }
-              }
-              
-              /* 移动端emoji漂浮动画（小范围移动 + 轻微旋转） */
-              @keyframes emojiFloat-${index} {
-                0%, 100% {
-                  transform: translate(-50%, -50%) rotate(0deg);
-                }
-                25% {
-                  transform: translate(calc(-50% + ${mobileAnim.path1X}px), calc(-50% + ${mobileAnim.path1Y}px)) rotate(${mobileAnim.rotate1}deg);
-                }
-                50% {
-                  transform: translate(calc(-50% + ${mobileAnim.path2X}px), calc(-50% + ${mobileAnim.path2Y}px)) rotate(${mobileAnim.rotate2}deg);
-                }
-                75% {
-                  transform: translate(calc(-50% + ${mobileAnim.path3X}px), calc(-50% + ${mobileAnim.path3Y}px)) rotate(${mobileAnim.rotate3}deg);
-                }
-              }
-            `;
-          }).join('\n')}
-        `}</style>
+              `;
+            }).join('\n')}
+          `}</style>
+        )}
       </div>
 
       {/* 诗句展示区域（中央） */}
