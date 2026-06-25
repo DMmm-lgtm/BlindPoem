@@ -681,6 +681,18 @@ function App() {
     }));
   }, [selectedEmojis, isSmallMobile]);
 
+  const emojiAnimations = useMemo(() => {
+    return selectedEmojis.map((_, index) => {
+      const mobileAnim = mobileEmojiAnimations[index];
+
+      if (isMobile) {
+        return `emojiSimpleFadeIn ${isSkipped ? '1.2s' : '1.8s'} ease-out forwards, emojiMobileFloat-${index} ${mobileAnim.duration}s ease-in-out ${isSkipped ? 1.2 + mobileAnim.delay : 1.8 + mobileAnim.delay}s infinite`;
+      }
+
+      return `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${emojiGlowDurations[index]}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`;
+    });
+  }, [emojiGlowDurations, isMobile, isSkipped, mobileEmojiAnimations, selectedEmojis]);
+
   // Emoji物理系统
   interface EmojiPhysics {
     x: number;
@@ -1444,17 +1456,15 @@ function App() {
         style={{ 
           position: 'fixed', 
           inset: 0, 
-          zIndex: poemData ? 10 : 30, // 诗句框显示时降到后面，隐藏时恢复到前面
+          zIndex: 10,
           pointerEvents: 'none',
         }}
       >
         {selectedEmojis.map((item, index) => {
           const glowColor = generateGlowColors[index];
-          const glowDuration = emojiGlowDurations[index];
           const glowSize = emojiGlowSizes[index];
           const initialPos = emojiInitialPositions[index];
           const physics = emojiPhysics[index];
-          const mobileAnim = mobileEmojiAnimations[index];
           
           // PC端使用物理引擎，移动端使用CSS动画
           const usePhysics = !isMobile && physicsEnabled && physics;
@@ -1482,11 +1492,7 @@ function App() {
                 pointerEvents: 'auto',
                 opacity: emojisVisible ? 1 : 0,
                 filter: `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`,
-                animation: emojisVisible 
-                  ? isMobile
-                    ? `emojiSimpleFadeIn ${isSkipped ? '1.2s' : '1.8s'} ease-out forwards, emojiMobileFloat-${index} ${mobileAnim.duration}s ease-in-out ${isSkipped ? 1.2 + mobileAnim.delay : 1.8 + mobileAnim.delay}s infinite`
-                    : `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${glowDuration}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`
-                  : 'none',
+                animation: emojisVisible ? emojiAnimations[index] : 'none',
                 transition: 'filter 0.3s ease',
                 willChange: usePhysics ? 'transform, filter' : isMobile ? 'transform, opacity' : 'filter',
               }}

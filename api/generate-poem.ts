@@ -9,9 +9,9 @@ interface PoemData {
 }
 
 const OPENROUTER_FREE_TEXT_MODELS = [
+  'google/gemma-4-31b-it:free',
   'qwen/qwen3-next-80b-a3b-instruct:free',
   'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-4-31b-it:free',
   'liquid/lfm-2.5-1.2b-instruct:free',
   'openrouter/free',
 ];
