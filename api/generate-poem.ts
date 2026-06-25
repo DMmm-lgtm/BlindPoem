@@ -25,13 +25,28 @@ function parsePoemJson(text: string): PoemData {
   return poemData;
 }
 
-async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
+function getOpenRouterModels(): string[] {
+  const configuredModels = (process.env.OPENROUTER_MODEL || 'openrouter/free')
+    .split(',')
+    .map((model) => model.trim())
+    .filter(Boolean);
+  const models = configuredModels.length > 0 ? configuredModels : ['openrouter/free'];
+
+  if (!models.includes('openrouter/free')) {
+    models.push('openrouter/free');
+  }
+
+  return models;
+}
+
+async function requestOpenRouterModel(fullPrompt: string, model: string): Promise<PoemData> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL || 'openrouter/auto';
 
   if (!apiKey) {
     throw new Error('Missing OPENROUTER_API_KEY');
   }
+
+  console.log(`🤖 OpenRouter 尝试模型: ${model}`);
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -46,7 +61,7 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
       messages: [
         {
           role: 'system',
-          content: 'You recommend existing poetry lines and return only valid JSON.',
+          content: 'You recommend existing poetry lines. Return only JSON with content, poem_title, and author.',
         },
         {
           role: 'user',
@@ -55,9 +70,6 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
       ],
       temperature: 1.1,
       max_tokens: 512,
-      response_format: {
-        type: 'json_object',
-      },
     }),
   });
 
@@ -65,7 +77,7 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('❌ OpenRouter API 错误:', errorText);
+    console.error(`❌ OpenRouter API 错误 (${model}):`, errorText);
     throw new Error(`OpenRouter API Error: ${response.status}`);
   }
 
@@ -73,6 +85,10 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
 
   if (data.usage) {
     console.log('💰 OpenRouter Token 使用情况:', data.usage);
+  }
+
+  if (data.model) {
+    console.log('🧭 OpenRouter 实际使用模型:', data.model);
   }
 
   const text = data.choices?.[0]?.message?.content;
@@ -83,6 +99,31 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
 
   console.log('📄 OpenRouter 原始文本:', text);
   return parsePoemJson(text);
+}
+
+async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('Missing OPENROUTER_API_KEY');
+  }
+
+  let lastError: unknown;
+
+  for (const model of getOpenRouterModels()) {
+    try {
+      return await requestOpenRouterModel(fullPrompt, model);
+    } catch (error) {
+      lastError = error;
+      console.error(`❌ OpenRouter 模型失败 (${model}):`, error);
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error('所有 OpenRouter 模型都不可用');
 }
 
 async function generateWithGemini(fullPrompt: string): Promise<PoemData> {
