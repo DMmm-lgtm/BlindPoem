@@ -813,20 +813,18 @@ function App() {
     }
   }, [welcomePhase, physicsEnabled, emojiPhysics.length, createEmojiPhysics, isMobile]);
 
-  // 初始化emoji物理属性（淡入完成后启动，仅PC端）
+  // 初始化emoji物理属性（emoji可见后立即启动，仅PC端）
   useEffect(() => {
     // 移动端使用CSS动画，不需要物理引擎
     if (isMobile) return;
+    if (!emojisVisible) return;
     
     if (!physicsEnabled && emojiPhysics.length === 0) {
-      // 等待emoji淡入完成后启动物理引擎
-      setTimeout(() => {
-        setEmojiPhysics(createEmojiPhysics());
-        setPhysicsEnabled(true);
-        console.log('✅ 物理引擎已启动，Emoji将随机分批动起来');
-      }, 15800); // 15.8秒emoji开始淡入时立即启动物理引擎
+      setEmojiPhysics(createEmojiPhysics());
+      setPhysicsEnabled(true);
+      console.log('✅ 物理引擎已随Emoji可见状态启动，Emoji将随机分批动起来');
     }
-  }, [physicsEnabled, emojiPhysics.length, createEmojiPhysics, isMobile]);
+  }, [emojisVisible, physicsEnabled, emojiPhysics.length, createEmojiPhysics, isMobile]);
 
   // 物理引擎 - 超级缓慢移动和反弹 + emoji间碰撞
   useEffect(() => {
