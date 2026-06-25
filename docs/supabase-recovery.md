@@ -37,6 +37,22 @@ Check read and insert access:
 npm run db:check -- --write
 ```
 
+Import more poems from a CSV or JSON file:
+
+```bash
+npm run db:import -- data/poems.sample.csv --dry-run
+npm run db:import -- data/poems.sample.csv
+```
+
+CSV columns:
+
+```csv
+content,poem_title,author,mood
+行到水穷处，坐看云起时,终南别业,王维,calm
+```
+
+The importer skips duplicate lines in the source file and asks Supabase to ignore rows that already have the same `content`.
+
 Expected result:
 
 ```text

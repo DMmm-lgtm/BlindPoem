@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "db:check": "node scripts/check-supabase.mjs",
+    "db:import": "node scripts/import-poems.mjs",
     "db:import-poems": "node scripts/import-poems-from-backup.mjs"
   },
   "dependencies": {
