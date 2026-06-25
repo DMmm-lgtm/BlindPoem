@@ -8,6 +8,14 @@ interface PoemData {
   author: string;
 }
 
+const OPENROUTER_FREE_TEXT_MODELS = [
+  'qwen/qwen3-next-80b-a3b-instruct:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'google/gemma-4-31b-it:free',
+  'liquid/lfm-2.5-1.2b-instruct:free',
+  'openrouter/free',
+];
+
 function parsePoemJson(text: string): PoemData {
   const cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
@@ -54,17 +62,70 @@ function parsePoemJson(text: string): PoemData {
 }
 
 function getOpenRouterModels(): string[] {
-  const configuredModels = (process.env.OPENROUTER_MODEL || 'openrouter/free')
+  const configuredModels = (process.env.OPENROUTER_MODEL || OPENROUTER_FREE_TEXT_MODELS.join(','))
     .split(',')
     .map((model) => model.trim())
     .filter(Boolean);
-  const models = configuredModels.length > 0 ? configuredModels : ['openrouter/free'];
+  const models = configuredModels.length > 0 ? configuredModels : OPENROUTER_FREE_TEXT_MODELS;
+  const expandedModels = models.flatMap((model) => (
+    model === 'openrouter/free' ? OPENROUTER_FREE_TEXT_MODELS : [model]
+  ));
+  const uniqueModels = [...new Set([...expandedModels, ...OPENROUTER_FREE_TEXT_MODELS])];
 
-  if (!models.includes('openrouter/free')) {
-    models.push('openrouter/free');
+  return uniqueModels;
+}
+
+function extractOpenRouterText(data: any): string {
+  const choice = data?.choices?.[0];
+  const message = choice?.message;
+  const content = message?.content;
+
+  if (typeof content === 'string' && content.trim()) {
+    return content;
   }
 
-  return models;
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => {
+        if (typeof part === 'string') {
+          return part;
+        }
+        if (typeof part?.text === 'string') {
+          return part.text;
+        }
+        if (typeof part?.content === 'string') {
+          return part.content;
+        }
+        return '';
+      })
+      .join('\n')
+      .trim();
+
+    if (text) {
+      return text;
+    }
+  }
+
+  if (typeof message?.reasoning === 'string' && message.reasoning.trim()) {
+    return message.reasoning;
+  }
+
+  if (typeof choice?.text === 'string' && choice.text.trim()) {
+    return choice.text;
+  }
+
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
+    return data.output_text;
+  }
+
+  console.error('❌ OpenRouter 响应缺少文本内容:', JSON.stringify({
+    model: data?.model,
+    choiceKeys: choice ? Object.keys(choice) : [],
+    messageKeys: message ? Object.keys(message) : [],
+    finishReason: choice?.finish_reason,
+    nativeFinishReason: choice?.native_finish_reason,
+  }));
+  throw new Error('无法解析 OpenRouter 响应');
 }
 
 async function requestOpenRouterModel(fullPrompt: string, model: string): Promise<PoemData> {
@@ -119,11 +180,7 @@ async function requestOpenRouterModel(fullPrompt: string, model: string): Promis
     console.log('🧭 OpenRouter 实际使用模型:', data.model);
   }
 
-  const text = data.choices?.[0]?.message?.content;
-
-  if (!text) {
-    throw new Error('无法解析 OpenRouter 响应');
-  }
+  const text = extractOpenRouterText(data);
 
   console.log('📄 OpenRouter 原始文本:', text);
   return parsePoemJson(text);
