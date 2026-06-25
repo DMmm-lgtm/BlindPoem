@@ -12,17 +12,45 @@ function parsePoemJson(text: string): PoemData {
   const cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
 
-  if (!jsonMatch) {
-    throw new Error('无法从响应中提取 JSON');
+  if (jsonMatch) {
+    const poemData = JSON.parse(jsonMatch[0]);
+
+    if (!poemData.content || !poemData.poem_title || !poemData.author) {
+      throw new Error('返回数据不完整');
+    }
+
+    return poemData;
   }
 
-  const poemData = JSON.parse(jsonMatch[0]);
+  const lines = cleanedText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const contentLine = lines.find((line) => (
+    !/^content[:：]/i.test(line)
+    && !/^poem_title[:：]/i.test(line)
+    && !/^title[:：]/i.test(line)
+    && !/^author[:：]/i.test(line)
+    && !/^作品[:：]/.test(line)
+    && !/^作者[:：]/.test(line)
+  ));
 
-  if (!poemData.content || !poemData.poem_title || !poemData.author) {
-    throw new Error('返回数据不完整');
+  if (contentLine) {
+    const content = contentLine
+      .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+      .replace(/^[\-*•\d.、\s]+/, '')
+      .trim();
+
+    if (content) {
+      return {
+        content,
+        poem_title: '未知',
+        author: '佚名',
+      };
+    }
   }
 
-  return poemData;
+  throw new Error('无法从响应中提取诗句');
 }
 
 function getOpenRouterModels(): string[] {
@@ -61,7 +89,7 @@ async function requestOpenRouterModel(fullPrompt: string, model: string): Promis
       messages: [
         {
           role: 'system',
-          content: 'You recommend existing poetry lines. Return only JSON with content, poem_title, and author.',
+          content: 'You recommend existing poetry lines. Return exactly one JSON object and no extra text. Required keys: content, poem_title, author. If the title or author is uncertain, use "未知" or "佚名".',
         },
         {
           role: 'user',
