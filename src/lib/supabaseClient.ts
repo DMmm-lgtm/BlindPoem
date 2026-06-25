@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
 // 从环境变量读取配置
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = rawSupabaseUrl
+  ? rawSupabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '')
+  : '';
 
 // 定义诗句类型
 export interface Poem {
