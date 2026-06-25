@@ -71,6 +71,19 @@ VITE_SUPABASE_ANON_KEY
 
 Then redeploy.
 
+## 5. Configure AI generation
+
+OpenRouter is the preferred AI provider. Add these Vercel environment variables:
+
+```bash
+OPENROUTER_API_KEY=your-openrouter-key
+OPENROUTER_MODEL=openrouter/auto
+OPENROUTER_SITE_URL=https://your-site.vercel.app
+OPENROUTER_APP_NAME=BlindPoem
+```
+
+`OPENROUTER_MODEL` can be changed later if you want to test a specific model. If `GEMINI_API_KEY` is still configured, the API will use Gemini as a fallback when OpenRouter fails.
+
 ## Fallback behavior
 
 If Supabase is missing or fails, the site will:

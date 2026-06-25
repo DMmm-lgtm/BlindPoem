@@ -1,6 +1,146 @@
 // Vercel Serverless Function - 生成诗句
-// 保护 Gemini API Key，不暴露在前端
+// 保护 AI API Key，不暴露在前端
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+interface PoemData {
+  content: string;
+  poem_title: string;
+  author: string;
+}
+
+function parsePoemJson(text: string): PoemData {
+  const cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+
+  if (!jsonMatch) {
+    throw new Error('无法从响应中提取 JSON');
+  }
+
+  const poemData = JSON.parse(jsonMatch[0]);
+
+  if (!poemData.content || !poemData.poem_title || !poemData.author) {
+    throw new Error('返回数据不完整');
+  }
+
+  return poemData;
+}
+
+async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const model = process.env.OPENROUTER_MODEL || 'openrouter/auto';
+
+  if (!apiKey) {
+    throw new Error('Missing OPENROUTER_API_KEY');
+  }
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'https://blindpoem.vercel.app',
+      'X-Title': process.env.OPENROUTER_APP_NAME || 'BlindPoem',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You recommend existing poetry lines and return only valid JSON.',
+        },
+        {
+          role: 'user',
+          content: fullPrompt,
+        },
+      ],
+      temperature: 1.1,
+      max_tokens: 512,
+      response_format: {
+        type: 'json_object',
+      },
+    }),
+  });
+
+  console.log('📥 收到 OpenRouter 响应，状态码:', response.status);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ OpenRouter API 错误:', errorText);
+    throw new Error(`OpenRouter API Error: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (data.usage) {
+    console.log('💰 OpenRouter Token 使用情况:', data.usage);
+  }
+
+  const text = data.choices?.[0]?.message?.content;
+
+  if (!text) {
+    throw new Error('无法解析 OpenRouter 响应');
+  }
+
+  console.log('📄 OpenRouter 原始文本:', text);
+  return parsePoemJson(text);
+}
+
+async function generateWithGemini(fullPrompt: string): Promise<PoemData> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+  if (!apiKey) {
+    throw new Error('Missing GEMINI_API_KEY');
+  }
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{ text: fullPrompt }],
+      }],
+      generationConfig: {
+        temperature: 1.1,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 512,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
+      },
+    }),
+  });
+
+  console.log('📥 收到 Gemini 响应，状态码:', response.status);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ Gemini API 错误:', errorText);
+    throw new Error(`Gemini API Error: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (data.usageMetadata) {
+    console.log('💰 Gemini Token 使用情况:');
+    console.log('  - 输入 Token:', data.usageMetadata.promptTokenCount);
+    console.log('  - 输出 Token:', data.usageMetadata.candidatesTokenCount);
+    console.log('  - 总计 Token:', data.usageMetadata.totalTokenCount);
+  }
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!text) {
+    throw new Error('无法解析 Gemini 响应');
+  }
+
+  console.log('📄 Gemini 原始文本:', text);
+  return parsePoemJson(text);
+}
 
 export default async function handler(
   req: VercelRequest,
@@ -11,12 +151,8 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // 从 Vercel 环境变量读取 API Key（后端，安全）
-  const API_KEY = process.env.GEMINI_API_KEY;
-  const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-
-  if (!API_KEY) {
-    console.error('❌ 缺少 GEMINI_API_KEY 环境变量');
+  if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+    console.error('❌ 缺少 AI API Key 环境变量');
     return res.status(500).json({ error: 'Missing API Key configuration' });
   }
 
@@ -124,80 +260,42 @@ Requirements:
 
     console.log('🎲 随机选择的 Prompt 类型:', promptTypeNames[selectedIndex]);
 
-    // 调用 Gemini API
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': API_KEY
+    const providers = [
+      {
+        name: 'OpenRouter',
+        enabled: Boolean(process.env.OPENROUTER_API_KEY),
+        generate: generateWithOpenRouter,
       },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: fullPrompt }]
-        }],
-        generationConfig: {
-          temperature: 1.1,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 512,
-          thinkingConfig: {
-            thinkingBudget: 0
-          }
-        }
-      })
-    });
+      {
+        name: 'Gemini',
+        enabled: Boolean(process.env.GEMINI_API_KEY),
+        generate: generateWithGemini,
+      },
+    ];
 
-    console.log('📥 收到 Gemini 响应，状态码:', response.status);
+    let lastError: unknown;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Gemini API 错误:', errorText);
-      throw new Error(`Gemini API Error: ${response.status}`);
-    }
+    for (const provider of providers) {
+      if (!provider.enabled) {
+        continue;
+      }
 
-    const data = await response.json();
-
-    // 🔢 Token 使用统计
-    if (data.usageMetadata) {
-      console.log('💰 Token 使用情况:');
-      console.log('  - 输入 Token:', data.usageMetadata.promptTokenCount);
-      console.log('  - 输出 Token:', data.usageMetadata.candidatesTokenCount);
-      console.log('  - 总计 Token:', data.usageMetadata.totalTokenCount);
-    }
-
-    // 解析响应
-    if (data.candidates && data.candidates.length > 0) {
-      const candidate = data.candidates[0];
-
-      if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-        let text = candidate.content.parts[0].text;
-        console.log('📄 Gemini 原始文本:', text);
-
-        // 清理可能的 markdown 代码块标记
-        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-
-        // 尝试提取 JSON
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const jsonStr = jsonMatch[0];
-          const poemData = JSON.parse(jsonStr);
-
-          // 验证返回数据
-          if (!poemData.content || !poemData.poem_title || !poemData.author) {
-            throw new Error('返回数据不完整');
-          }
-
-          console.log('✅ 诗句生成成功:', poemData);
-          
-          // 返回成功响应
-          return res.status(200).json(poemData);
-        } else {
-          throw new Error('无法从响应中提取 JSON');
-        }
+      try {
+        console.log(`🤖 尝试使用 ${provider.name} 生成诗句`);
+        const poemData = await provider.generate(fullPrompt);
+        console.log(`✅ ${provider.name} 诗句生成成功:`, poemData);
+        return res.status(200).json(poemData);
+      } catch (providerError) {
+        lastError = providerError;
+        console.error(`❌ ${provider.name} 生成失败:`, providerError);
       }
     }
 
-    throw new Error('无法解析 AI 响应');
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error('所有 AI Provider 都不可用');
   } catch (error) {
     console.error('❌ API 调用失败：', error);
     
@@ -207,4 +305,3 @@ Requirements:
     });
   }
 }
-
