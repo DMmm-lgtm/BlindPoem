@@ -1,0 +1,374 @@
+/* 引入自定义字体 - 千图笔锋手写体 */
+@font-face {
+  font-family: 'QianTuBiFeng';
+  src: url('/QianTuBiFengShouXieTi-2.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* 应用容器 - 入场动画 */
+.app-container {
+  animation: appFadeIn 1.5s ease-out;
+}
+
+@keyframes appFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Emoji 容器 */
+.emoji-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Emoji 简单淡入动画 */
+@keyframes emojiSimpleFadeIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* 诗句展示 - 渐入动画 */
+.poem-display {
+  animation: poemReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 40px rgba(255, 215, 0, 0.2);
+  will-change: opacity, transform;
+}
+
+@keyframes poemReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 入场动画 - 诗句逐行淡入 */
+@keyframes welcomeLineAppear {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 诗句幕布擦除动画（由首句下移节奏带动） */
+@keyframes welcomeLineCurtainWipe {
+  0% {
+    opacity: 0.9;
+    transform: translateX(-50%);
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translateX(-50%);
+    clip-path: inset(100% 0 0 0);
+  }
+}
+
+/* 第一句像幕布一样经过中间诗句，再与第八句一起落底 */
+@keyframes welcomeFirstLineCurtainMove {
+  0% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(0);
+  }
+  72.73% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(var(--meet-y, 0px));
+  }
+  100% {
+    opacity: 0.7;
+    transform: translateX(-50%) translateY(var(--move-y, 0px));
+  }
+}
+
+/* 第八句先等待第一句靠近，再一起快速落底 */
+@keyframes welcomeLastLineJoinMove {
+  0%,
+  72.73% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0.7;
+    transform: translateX(-50%) translateY(var(--move-y, 0px));
+  }
+}
+
+/* 跳过时，只有第一句向屏幕底端滑动 */
+@keyframes welcomeFirstLineSkipToBottom {
+  0% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0.7;
+    transform: translateX(-50%) translateY(var(--move-y, 0px));
+  }
+}
+
+/* 首尾诗句落底后的收束 */
+@keyframes welcomeBottomLineSettle {
+  0% {
+    opacity: 0.7;
+    transform: translateX(-50%) translateY(var(--move-y, 0px)) scale(1);
+  }
+  100% {
+    opacity: 0.7;
+    transform: translateX(-50%) translateY(var(--move-y, 0px)) scale(0.8);
+  }
+}
+
+/* 第八句未出现时，跳过后在底端出现并收束 */
+@keyframes welcomeBottomLineAppearSettle {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(var(--move-y, 0px)) scale(1);
+  }
+  100% {
+    opacity: 0.7;
+    transform: translateX(-50%) translateY(var(--move-y, 0px)) scale(0.8);
+  }
+}
+
+/* 欢迎屏幕淡出 */
+@keyframes welcomeFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* 省略号循环动画 */
+.dots-animation {
+  display: inline;
+}
+
+.dots-animation .dot1 {
+  animation: dotFade1 1.5s ease-in-out infinite;
+}
+
+.dots-animation .dot2 {
+  animation: dotFade2 1.5s ease-in-out infinite;
+}
+
+.dots-animation .dot3 {
+  animation: dotFade3 1.5s ease-in-out infinite;
+}
+
+@keyframes dotFade1 {
+  0%, 33% { opacity: 1; }
+  34%, 100% { opacity: 0.3; }
+}
+
+@keyframes dotFade2 {
+  0%, 33% { opacity: 0.3; }
+  34%, 66% { opacity: 1; }
+  67%, 100% { opacity: 0.3; }
+}
+
+@keyframes dotFade3 {
+  0%, 66% { opacity: 0.3; }
+  67%, 100% { opacity: 1; }
+}
+
+/* 提示词淡出动画 */
+@keyframes promptFadeOut {
+  0% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+}
+
+/* Emoji 物理运动系统 - 动画已通过JavaScript动态生成 */
+
+/* 移动端适配 - 完整版（优化显示大小）*/
+@media (max-width: 768px) {
+  /* Emoji按钮 */
+  button[title] {
+    font-size: 2.75rem !important;
+  }
+  
+  /* 诗句展示框 */
+  .poem-display {
+    max-width: 90vw;
+    padding: 1rem;
+  }
+  
+  .poem-display .text-2xl {
+    font-size: 1.75rem !important;
+    line-height: 2.25rem !important;
+  }
+  
+  .poem-display .text-sm {
+    font-size: 0.875rem !important;
+  }
+  
+  /* 按钮文字 */
+  .poem-display button {
+    font-size: 1rem !important;
+    padding: 0.5rem 1rem !important;
+  }
+  
+  /* 爱心按钮 */
+  .poem-display button.text-3xl {
+    font-size: 2.5rem !important;
+  }
+  
+  /* 二维码 */
+  .poem-display img {
+    width: 10rem !important;
+    height: 10rem !important;
+  }
+}
+
+/* 超小屏幕（手机竖屏）- 优化显示大小 */
+@media (max-width: 480px) {
+  /* Emoji按钮 */
+  button[title] {
+    font-size: 2.25rem !important;
+  }
+  
+  /* 诗句展示框 */
+  .poem-display {
+    max-width: 95vw;
+    padding: 0.75rem;
+  }
+  
+  .poem-display .text-2xl {
+    font-size: 1.5rem !important;
+    line-height: 2rem !important;
+  }
+  
+  .poem-display .text-sm {
+    font-size: 0.75rem !important;
+  }
+  
+  /* 按钮文字 */
+  .poem-display button {
+    font-size: 0.875rem !important;
+    padding: 0.5rem 0.875rem !important;
+  }
+  
+  /* 爱心按钮 */
+  .poem-display button.text-3xl {
+    font-size: 2rem !important;
+  }
+  
+  /* 二维码 */
+  .poem-display img {
+    width: 9rem !important;
+    height: 9rem !important;
+  }
+}
+
+/* 爱心按钮淡入动画 - 1.5秒 */
+@keyframes loveButtonFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 提示文字淡入动画 - 0.8秒 */
+@keyframes loveHintFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 高光划过动画 - 2.5秒循环，从左往右 */
+@keyframes loveHintShine {
+  0% {
+    background-position: 250% center;   /* 从右侧外开始 */
+  }
+  100% {
+    background-position: -150% center;  /* 划到左侧外结束 */
+  }
+}
+
+/* 提示文字高光效果 */
+.love-hint-text {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 215, 0, 0.8) 0%,
+    rgba(255, 215, 0, 0.8) 30%,
+    rgba(255, 255, 255, 1.0) 50%,      /* 高光中心：纯白 */
+    rgba(255, 215, 0, 0.8) 70%,
+    rgba(255, 215, 0, 0.8) 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 诗句框淡出动画 */
+@keyframes poemFadeOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* 二维码淡入动画 */
+@keyframes qrCodeFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 二维码淡出动画 */
+@keyframes qrCodeFadeOut {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+}
