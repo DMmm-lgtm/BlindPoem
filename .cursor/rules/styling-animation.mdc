@@ -1,0 +1,275 @@
+---
+globs: *.css,*.tsx,tailwind.config.*
+---
+
+# 样式和动画开发规范
+
+## 设计理念
+
+### 核心视觉风格
+- **极致简约、诗意、治愈**
+- **色调**: 深蓝/深紫（夜空感）+ 浅金色/淡白色（微光感）
+- **动画**: 缓慢、柔和、呼吸式，营造凌晨微光的氛围
+
+---
+
+## Tailwind CSS 配置
+
+### 自定义颜色
+```js
+// tailwind.config.js
+theme: {
+  extend: {
+    colors: {
+      'night-blue': '#0a0e27',    // 深夜蓝
+      'dawn-purple': '#1a1a3e',   // 黎明紫
+      'gold': '#ffd700',          // 金色（用于文字和辉光）
+    },
+  },
+}
+```
+
+### 使用规范
+- **优先使用 Tailwind 类名**：`className="text-gold opacity-80"`
+- **复杂动画写在 CSS 文件**：使用 `@keyframes` 定义
+- **响应式设计**：使用 `sm:` `md:` `lg:` 前缀
+
+---
+
+## 动画系统
+
+### 1. 背景渐变动画（全局）
+```css
+/* src/index.css */
+body {
+  background: linear-gradient(180deg, #0a0e27 0%, #1a1a3e 50%, #2a1a4e 100%);
+  background-size: 100% 200%;
+  animation: gradientShift 20s ease-in-out infinite;
+}
+
+@keyframes gradientShift {
+  0%, 100% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 0% 100%;
+  }
+}
+```
+
+**效果**: 背景在深蓝和深紫之间缓慢循环，模拟从深夜到黎明的变化。
+
+---
+
+### 2. Emoji 按钮呼吸式辉光
+```css
+/* src/App.css */
+.emoji-btn {
+  filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.3));
+  animation: breathe 3s ease-in-out infinite;
+  transition: transform 0.2s ease;
+}
+
+.emoji-btn:hover {
+  filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.6));
+  transform: scale(1.1);
+}
+
+@keyframes breathe {
+  0%, 100% {
+    filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.5));
+  }
+}
+```
+
+**效果**: 
+- Emoji 有柔和的金色辉光，缓慢呼吸（3 秒周期）
+- 鼠标悬停时辉光增强，按钮放大 1.1 倍
+
+---
+
+### 3. 诗句展示动画
+```css
+/* src/App.css */
+.poem-display {
+  animation: poemReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 40px rgba(255, 215, 0, 0.2);
+}
+
+@keyframes poemReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+```
+
+**效果**: 诗句从下方缓慢浮现，伴随放大和渐入效果。
+
+**关闭动画**（流星效果）：
+```css
+.poem-display.closing {
+  animation: poemClose 0.5s ease-in forwards;
+}
+
+@keyframes poemClose {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-100px);
+  }
+}
+```
+
+---
+
+### 4. 加载状态动画
+```tsx
+{/* 使用 Tailwind 内置的 animate-pulse */}
+{isLoading && (
+  <div className="text-gold text-xl animate-pulse">
+    诗意生成中...
+  </div>
+)}
+```
+
+---
+
+## 布局规范
+
+### Emoji 按钮定位
+```tsx
+// 17 个 Emoji 随机分布在屏幕上
+const positions = [
+  { top: '10%', left: '15%' },
+  { top: '20%', left: '80%' },
+  // ... 共 17 个位置
+];
+
+<button
+  className="emoji-btn absolute text-5xl cursor-pointer"
+  style={{
+    top: positions[index].top,
+    left: positions[index].left,
+    transform: 'translate(-50%, -50%)', // 居中对齐
+  }}
+>
+  {item.emoji}
+</button>
+```
+
+**要点**:
+- 使用 `absolute` 定位
+- 百分比坐标确保响应式
+- `transform: translate(-50%, -50%)` 确保 Emoji 以中心点定位
+
+---
+
+### 诗句展示容器
+```tsx
+<div className="fixed inset-0 flex items-center justify-center z-20">
+  <div className="poem-display bg-black/40 backdrop-blur-md rounded-2xl p-8 max-w-2xl">
+    <p className="text-2xl text-white mb-4 leading-relaxed">
+      {poemData.content}
+    </p>
+    <div className="text-sm text-gold/80">
+      <p>《{poemData.poem_title}》</p>
+      <p>— {poemData.author}</p>
+    </div>
+  </div>
+</div>
+```
+
+**要点**:
+- `fixed inset-0`: 全屏覆盖
+- `backdrop-blur-md`: 毛玻璃效果
+- `bg-black/40`: 半透明黑色背景
+- `z-20`: 确保在 Emoji 按钮之上
+
+---
+
+## 响应式设计
+
+### 移动端适配
+```css
+/* 移动端减少 Emoji 大小 */
+@media (max-width: 768px) {
+  .emoji-btn {
+    font-size: 2.5rem; /* 从 3rem 减少到 2.5rem */
+  }
+  
+  .poem-display {
+    max-width: 90vw;
+    padding: 1.5rem;
+  }
+}
+```
+
+---
+
+## 性能优化
+
+### GPU 加速
+```css
+/* 使用 transform 和 opacity 实现动画（GPU 加速） */
+.emoji-btn {
+  will-change: transform, filter;
+}
+
+.poem-display {
+  will-change: opacity, transform;
+}
+```
+
+### 避免的性能陷阱
+- ❌ 不要使用 `box-shadow` 动画（CPU 密集）
+- ❌ 不要频繁修改 `width`、`height`、`margin`（会触发重排）
+- ✅ 优先使用 `transform` 和 `opacity`
+- ✅ 使用 `will-change` 提示浏览器优化
+
+---
+
+## 颜色使用规范
+
+| 元素 | 颜色 | Tailwind 类名 | 用途 |
+|------|------|---------------|------|
+| 标题 | 金色 | `text-gold` | 页面标题"盲盒诗" |
+| 诗句内容 | 白色 | `text-white` | 诗句主体文字 |
+| 出处信息 | 金色半透明 | `text-gold/80` | 诗名和作者 |
+| 按钮 | 白色半透明 | `bg-white/10` | "关闭"按钮背景 |
+| 背景 | 深蓝渐变 | `from-night-blue to-dawn-purple` | 页面背景 |
+
+---
+
+## 最佳实践
+
+### ✅ 推荐做法
+- 动画时长保持在 0.3s - 3s 之间（太快太快都不好）
+- 使用 `cubic-bezier(0.4, 0, 0.2, 1)` 缓动函数（自然流畅）
+- 金色辉光使用 `rgba(255, 215, 0, 0.3)` 保持半透明
+- 重要动画写在 CSS 文件，简单样式用 Tailwind
+
+### ❌ 避免做法
+- 不要使用刺眼的颜色（保持柔和诗意）
+- 不要使用过快的动画（< 0.2s）
+- 不要叠加过多动画效果（保持简约）
+- 不要忽略移动端适配
+
+### 调试技巧
+```bash
+# 实时查看 CSS 编译
+npm run dev
+
+# 检查 Tailwind 生成的类名
+npm run build -- --debug
+```
