@@ -9,17 +9,18 @@
 - Added share-poster generation from favorite poems, with download, copy-text, and system-share actions.
 - Added lightweight daily AI image quota tracking; local fallback posters and failed AI image attempts do not consume quota.
 - Added Supabase `like_count` support and an `increment_poem_like` RPC for shared poem like counts.
-- Added an OpenRouter-based share-image API endpoint.
+- Added a Cloudflare AI-based share-image API endpoint.
 
 ### Changed
 
 - The heart interaction now saves the poem, increments the like count, and opens the reward QR code without navigating to the favorites drawer.
 - The reward QR code is preserved, but the separate reward button in the poem modal was removed.
 - Share posters now use varied horizontal/vertical text layouts so the image remains the visual focus.
-- Direct Gemini usage was disabled. Poem generation now uses OpenRouter only, and image generation only tries configured or discovered free OpenRouter image models.
+- Direct Gemini usage was disabled. Poem generation now uses OpenRouter only, and image generation uses Cloudflare AI.
+- The default Cloudflare AI image model is `@cf/black-forest-labs/flux-1-schnell`.
 - Renamed the frontend AI client from `geminiClient` to `aiClient`.
 
 ### Notes
 
-- OpenRouter image generation needs `OPENROUTER_API_KEY`; `OPENROUTER_IMAGE_MODEL` is optional.
-- If no free OpenRouter image model is available, the app falls back to local poster generation.
+- Cloudflare image generation needs `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_AI_IMAGE_MODEL` is optional.
+- If Cloudflare AI is unavailable, the app falls back to local poster generation.

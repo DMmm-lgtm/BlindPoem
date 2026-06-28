@@ -78,12 +78,14 @@ OpenRouter is the preferred AI provider. Add these Vercel environment variables:
 ```bash
 OPENROUTER_API_KEY=your-openrouter-key
 OPENROUTER_MODEL=openrouter/free
-OPENROUTER_IMAGE_MODEL=optional-free-image-model
 OPENROUTER_SITE_URL=https://your-site.vercel.app
 OPENROUTER_APP_NAME=BlindPoem
+CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
+CLOUDFLARE_API_TOKEN=your-cloudflare-workers-ai-token
+CLOUDFLARE_AI_IMAGE_MODEL=@cf/black-forest-labs/flux-1-schnell
 ```
 
-`OPENROUTER_MODEL` can be changed later if you want to test a specific text model. Use `openrouter/free` for zero-cost testing. `OPENROUTER_IMAGE_MODEL` is optional; when it is not set, the share-image API asks OpenRouter for currently available free image models and tries those only. Gemini is intentionally not used.
+`OPENROUTER_MODEL` can be changed later if you want to test a specific text model. Use `openrouter/free` for zero-cost testing. Share-image generation uses Cloudflare AI; `CLOUDFLARE_AI_IMAGE_MODEL` is optional and defaults to `@cf/black-forest-labs/flux-1-schnell`. Gemini is intentionally not used.
 
 ## Fallback behavior
 
