@@ -156,6 +156,11 @@ function App() {
   // 📱 移动设备检测：桌面浏览器即使窗口较窄，也保留完整动效。
   const getIsTouchDevice = () =>
     window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  const [viewportSize, setViewportSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+  const [isTouchDevice, setIsTouchDevice] = useState(getIsTouchDevice());
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768 && getIsTouchDevice());
   const [isSmallMobile, setIsSmallMobile] = useState(window.innerWidth <= 480 && getIsTouchDevice());
   const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth <= 760);
@@ -163,6 +168,11 @@ function App() {
   useEffect(() => {
     const handleResize = () => {
       const isTouchDevice = getIsTouchDevice();
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+      setIsTouchDevice(isTouchDevice);
       setIsMobile(window.innerWidth <= 768 && isTouchDevice);
       setIsSmallMobile(window.innerWidth <= 480 && isTouchDevice);
       setIsNarrowScreen(window.innerWidth <= 760);
@@ -184,11 +194,30 @@ function App() {
     const negative = EMOJI_MOODS.slice(55, 90);  // 负面情绪 35个
     const intense = EMOJI_MOODS.slice(90, 100);  // 强烈情绪 10个
     
-    // 根据设备类型选择不同数量（性能优化：超小屏12个，移动端18个，PC端27个）
-    const counts = isSmallMobile
-      ? { positive: 4, neutral: 2, negative: 4, intense: 2 }  // 超小屏：12个
-      : isMobile 
-      ? { positive: 6, neutral: 3, negative: 6, intense: 3 }  // 移动端：18个
+    const clamp = (value: number, min: number, max: number) =>
+      Math.max(min, Math.min(max, value));
+    const screenArea = viewportSize.width * viewportSize.height;
+    const targetCount = isTouchDevice
+      ? isSmallMobile
+        ? clamp(Math.round(screenArea / 42000), 8, 12)
+        : isMobile
+          ? clamp(Math.round(screenArea / 46000), 10, 16)
+          : clamp(Math.round(screenArea / 52000), 16, 28)
+      : 27;
+    
+    // 桌面端保留现有 27 个的视觉密度；非桌面端按屏幕面积保持中等密度。
+    const counts = isTouchDevice
+      ? (() => {
+          const positiveCount = Math.round(targetCount * 0.35);
+          const neutralCount = Math.round(targetCount * 0.2);
+          const negativeCount = Math.round(targetCount * 0.35);
+          return {
+            positive: positiveCount,
+            neutral: neutralCount,
+            negative: negativeCount,
+            intense: targetCount - positiveCount - neutralCount - negativeCount,
+          };
+        })()
       : { positive: 9, neutral: 5, negative: 9, intense: 4 }; // PC端：27个
     
     // 从每类中随机选择，保持情绪平衡
@@ -202,14 +231,20 @@ function App() {
     // 再次打乱顺序，避免情绪分组显示
     const final = shuffleArray(selected);
     
-    const totalCount = isSmallMobile ? 12 : isMobile ? 18 : 27;
-    const deviceType = isSmallMobile ? '超小屏' : isMobile ? '移动端' : 'PC端';
+    const totalCount = final.length;
+    const deviceType = isTouchDevice
+      ? isSmallMobile
+        ? '超小屏触摸设备'
+        : isMobile
+          ? '移动端触摸设备'
+          : '平板/触摸设备'
+      : 'PC端';
     console.log(`🎲 本次从100个中随机选择的${totalCount}个 Emoji (${deviceType}):`, 
       final.map(e => `${e.emoji} ${e.mood}`).join(', ')
     );
     
     return final;
-  }, [isSmallMobile, isMobile]); // 依赖设备类型 - 设备类型变化时重新计算
+  }, [isSmallMobile, isMobile, isTouchDevice, viewportSize]); // 依赖设备类型和屏幕面积 - 设备类型变化时重新计算
 
   // 入场动画状态
   const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
@@ -232,6 +267,7 @@ function App() {
   const welcomeLineRefs = useRef<(HTMLDivElement | null)[]>([]);
   
   const [isLoading, setIsLoading] = useState(false);
+  const isRequestInFlightRef = useRef(false);
   const [poemData, setPoemData] = useState<{
     content: string;
     poem_title: string;
@@ -247,26 +283,30 @@ function App() {
   const [isPoemFadingOut, setIsPoemFadingOut] = useState(false); // 诗句框淡出状态
   const [isQRFadingOut, setIsQRFadingOut] = useState(false);     // 二维码淡出状态
 
-  // 流星效果状态管理
-  const [meteorParticles, setMeteorParticles] = useState<Map<string, { 
+  type StarParticle = {
+    id: string;
+    layer: 'front' | 'mid' | 'back';
+    size: number;
+    glowRadius: number;
+    baseOpacity: number;
+    maxOpacity: number;
+    colorR: number;
+    colorG: number;
+    colorB: number;
+    x: number;
+    y: number;
+  };
+
+  // 流星效果状态管理：只给 Canvas 渲染循环读取，不进入 React 渲染路径。
+  const meteorParticlesRef = useRef(new Map<string, { 
     startTime: number; 
     startX: number; 
     startY: number;
     direction: number; // 流星方向：0-右下, 1-左下, 2-右上, 3-左上, 4-正下, 5-正右
-  }>>(new Map());
-  const meteorParticlesRef = useRef(meteorParticles);
+  }>());
   
   // 粒子位置覆盖（用于流星后在新位置重生）
-  const [particlePositionOverrides, setParticlePositionOverrides] = useState<Map<string, { x: number; y: number }>>(new Map());
-  const particlePositionOverridesRef = useRef(particlePositionOverrides);
-
-  useEffect(() => {
-    meteorParticlesRef.current = meteorParticles;
-  }, [meteorParticles]);
-
-  useEffect(() => {
-    particlePositionOverridesRef.current = particlePositionOverrides;
-  }, [particlePositionOverrides]);
+  const particlePositionOverridesRef = useRef(new Map<string, { x: number; y: number }>());
 
   // 入场诗句
   const welcomeLines = [
@@ -546,8 +586,7 @@ function App() {
     };
   }, [isWelcomeFontReady, isSkipped]);
 
-  // 🌟 三层星空粒子系统 - 使用 useMemo 缓存，避免闪烁
-  // 移动端只保留少量 Canvas 粒子，避免大量 DOM 动画导致发热卡顿。
+  // 🌟 三层星空粒子系统 - 静态星空 + 事件驱动眨眼/流星
   const particleSequences = useMemo(() => {
     const particleCount = isSmallMobile ? 
       { front: 10, mid: 8, back: 6 } :
@@ -559,8 +598,7 @@ function App() {
     const generateParticles = (
       count: number, 
       layer: 'front' | 'mid' | 'back',
-      baseDelay: number,
-      delayRange: number
+      baseDelay: number
     ) => {
       // 根据层级设置不同的属性（强化三层纵深感）
       const layerConfig = {
@@ -583,254 +621,446 @@ function App() {
       
       const config = layerConfig[layer];
       
-      return Array.from({ length: count }, (_, i) => ({
-        id: `${layer}-${baseDelay}-${i}`,
-        layer,
-        fadeInDelay: baseDelay + Math.random() * delayRange,
-        size: config.sizeMin + Math.random() * (config.sizeMax - config.sizeMin),
-        baseOpacity: config.opacityMin + Math.random() * (config.opacityMax - config.opacityMin),
-        opacityMin: config.opacityMin,
-        opacityMax: config.opacityMax,
-        colorR: config.colorR,
-        colorG: config.colorG,
-        colorB: config.colorB,
-        x: (Math.random() * 100) / 100, // 转换为 0-1 的比例
-        y: (Math.random() * 100) / 100, // 转换为 0-1 的比例
-        // 闪烁效果参数（快速闪烁 + 长时间保持）
-        flashDuration: 0.5 + Math.random() * 1.5, // 闪烁时长：0.5-2秒
-        holdDuration: 20 + Math.random() * 40, // 保持时长：20-60秒
-        flashPhase: Math.random() * 100, // 随机起始相位（秒）
-        // 浮动效果参数（缓慢浮动）
-        driftSpeed: 0.02 + Math.random() * 0.08, // 漂浮速度参数（暂未使用）
-        driftAngle: Math.random() * Math.PI * 2, // 漂浮方向：随机角度
-        driftRadius: 5 + Math.random() * 15, // 漂浮半径：5-20px（粒子围绕原点的最大偏移）
-        driftPhase: Math.random() * Math.PI * 2, // 漂浮动画随机起始相位
-        driftPeriod: 60 + Math.random() * 100, // 漂浮周期：60-160秒（最快约1-2px/秒）
-      }));
+      return Array.from({ length: count }, (_, i): StarParticle => {
+        const size = config.sizeMin + Math.random() * (config.sizeMax - config.sizeMin);
+        return {
+          id: `${layer}-${baseDelay}-${i}`,
+          layer,
+          size,
+          glowRadius: size * (1.15 + Math.random() * 1.85),
+          baseOpacity: config.opacityMin + Math.random() * (config.opacityMax - config.opacityMin) * 0.45,
+          maxOpacity: config.opacityMax,
+          colorR: config.colorR,
+          colorG: config.colorG,
+          colorB: config.colorB,
+          x: Math.random(),
+          y: Math.random(),
+        };
+      });
     };
     
     // 三层粒子：根据屏幕尺寸调整数量
-    const frontLayer = generateParticles(particleCount.front, 'front', 0, 3);
-    const midLayer = generateParticles(particleCount.mid, 'mid', 1, 4);
-    const backLayer = generateParticles(particleCount.back, 'back', 2, 5);
+    const frontLayer = generateParticles(particleCount.front, 'front', 0);
+    const midLayer = generateParticles(particleCount.mid, 'mid', 1);
+    const backLayer = generateParticles(particleCount.back, 'back', 2);
     
     const deviceType = isSmallMobile ? '超小屏' : isMobile ? '移动端' : 'PC端';
-    const fps = isSmallMobile ? '18fps' : isMobile ? '24fps' : '60fps';
-    console.log(`✨ 粒子系统 (${deviceType}, ${fps}): 前景${particleCount.front}个 + 中景${particleCount.mid}个 + 背景${particleCount.back}个 = 总计${particleCount.front + particleCount.mid + particleCount.back}个`);
+    console.log(`✨ 静态星空 (${deviceType}): 前景${particleCount.front}个 + 中景${particleCount.mid}个 + 背景${particleCount.back}个 = 总计${particleCount.front + particleCount.mid + particleCount.back}个`);
     
     return { frontLayer, midLayer, backLayer };
   }, [isSmallMobile, isMobile]); // 屏幕尺寸变化时重新计算
 
+  // 深空背景：一次性绘制，避免大面积 blur 背景持续动画。
+  const deepSpaceCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = deepSpaceCanvasRef.current;
+    if (!canvas) return;
+
+    const drawDeepSpace = () => {
+      const ctx = canvas.getContext('2d', { alpha: false });
+      if (!ctx) return;
+
+      const dpr = Math.min(window.devicePixelRatio || 1, isTouchDevice ? 1.5 : 2);
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const nightGradient = ctx.createLinearGradient(0, 0, 0, height);
+      nightGradient.addColorStop(0, '#060819');
+      nightGradient.addColorStop(0.28, '#090e26');
+      nightGradient.addColorStop(0.58, '#100f2a');
+      nightGradient.addColorStop(0.82, '#080e25');
+      nightGradient.addColorStop(1, '#050613');
+      ctx.fillStyle = nightGradient;
+      ctx.fillRect(0, 0, width, height);
+
+      const nebulae = [
+        { x: 0.46, y: 0.44, r: 0.64, color: '78, 82, 156', alpha: isTouchDevice ? 0.165 : 0.215 },
+        { x: 0.22, y: 0.3, r: 0.5, color: '30, 68, 126', alpha: isTouchDevice ? 0.135 : 0.175 },
+        { x: 0.78, y: 0.68, r: 0.54, color: '54, 38, 96', alpha: isTouchDevice ? 0.12 : 0.155 },
+        { x: 0.56, y: 0.61, r: 0.36, color: '210, 168, 72', alpha: isTouchDevice ? 0.028 : 0.04 },
+        { x: 0.42, y: 0.78, r: 0.44, color: '26, 94, 132', alpha: isTouchDevice ? 0.075 : 0.1 },
+      ];
+
+      nebulae.forEach((nebula) => {
+        const radius = Math.max(width, height) * nebula.r;
+        const gradient = ctx.createRadialGradient(
+          width * nebula.x,
+          height * nebula.y,
+          0,
+          width * nebula.x,
+          height * nebula.y,
+          radius
+        );
+        gradient.addColorStop(0, `rgba(${nebula.color}, ${nebula.alpha})`);
+        gradient.addColorStop(0.48, `rgba(${nebula.color}, ${nebula.alpha * 0.42})`);
+        gradient.addColorStop(1, `rgba(${nebula.color}, 0)`);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      });
+
+      const colorBands = [
+        {
+          from: { x: width * 0.08, y: height * 0.18 },
+          to: { x: width * 0.92, y: height * 0.88 },
+          stops: [
+            [0, 'rgba(64, 92, 170, 0)'],
+            [0.38, `rgba(56, 82, 150, ${isTouchDevice ? 0.044 : 0.062})`],
+            [0.7, 'rgba(66, 72, 142, 0.03)'],
+            [1, 'rgba(64, 92, 170, 0)'],
+          ] as const,
+        },
+        {
+          from: { x: width * 0.82, y: height * 0.04 },
+          to: { x: width * 0.16, y: height * 0.96 },
+          stops: [
+            [0, 'rgba(76, 94, 160, 0)'],
+            [0.42, `rgba(66, 82, 142, ${isTouchDevice ? 0.032 : 0.046})`],
+            [0.76, 'rgba(26, 80, 120, 0.034)'],
+            [1, 'rgba(76, 94, 160, 0)'],
+          ] as const,
+        },
+        {
+          from: { x: width * 0.02, y: height * 0.72 },
+          to: { x: width * 0.98, y: height * 0.38 },
+          stops: [
+            [0, 'rgba(36, 112, 150, 0)'],
+            [0.34, `rgba(32, 96, 132, ${isTouchDevice ? 0.028 : 0.04})`],
+            [0.55, `rgba(102, 82, 156, ${isTouchDevice ? 0.025 : 0.035})`],
+            [0.82, 'rgba(36, 72, 132, 0.02)'],
+            [1, 'rgba(36, 112, 150, 0)'],
+          ] as const,
+        },
+      ];
+
+      colorBands.forEach((band) => {
+        const gradient = ctx.createLinearGradient(band.from.x, band.from.y, band.to.x, band.to.y);
+        band.stops.forEach(([stop, color]) => gradient.addColorStop(stop, color));
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      });
+
+      const edgeShadows = [
+        { x: -0.08, y: 0.14, r: 0.72, alpha: 0.22 },
+        { x: 1.06, y: 0.24, r: 0.66, alpha: 0.18 },
+        { x: 0.18, y: 1.08, r: 0.74, alpha: 0.2 },
+        { x: 0.95, y: 1.0, r: 0.56, alpha: 0.14 },
+        { x: 0.48, y: -0.2, r: 0.58, alpha: 0.13 },
+      ];
+
+      edgeShadows.forEach((shadow) => {
+        const radius = Math.max(width, height) * shadow.r;
+        const gradient = ctx.createRadialGradient(
+          width * shadow.x,
+          height * shadow.y,
+          0,
+          width * shadow.x,
+          height * shadow.y,
+          radius
+        );
+        gradient.addColorStop(0, `rgba(0, 0, 0, ${shadow.alpha})`);
+        gradient.addColorStop(0.52, `rgba(0, 0, 0, ${shadow.alpha * 0.34})`);
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      });
+
+      const noiseCount = Math.round((width * height) / (isTouchDevice ? 6500 : 4200));
+      for (let i = 0; i < noiseCount; i++) {
+        const alpha = 0.015 + Math.random() * 0.035;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.fillRect(Math.random() * width, Math.random() * height, 1, 1);
+      }
+    };
+
+    drawDeepSpace();
+    window.addEventListener('resize', drawDeepSpace);
+
+    return () => window.removeEventListener('resize', drawDeepSpace);
+  }, [isTouchDevice]);
+
   // Canvas 粒子系统
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const particleAnimationRef = useRef<number>(0);
-  const startTimeRef = useRef<number>(Date.now());
+  const starAnimationRef = useRef<number>(0);
+  const meteorAnimationRef = useRef<number>(0);
+  const meteorInFlightRef = useRef(false);
+  const starRevealTimerRef = useRef<number>(0);
+  const revealedStarIdsRef = useRef(new Set<string>());
+  const allStarsVisibleRef = useRef(false);
+  const twinkleTimerRef = useRef<number>(0);
+  const twinkleWaveActiveRef = useRef(false);
+  const activeTwinklesRef = useRef(new Map<string, {
+    startTime: number;
+    delay: number;
+    duration: number;
+    peakOpacity: number;
+  }>());
 
-  // Canvas 渲染循环 - 三层粒子呼吸动画 + 流星
-  useEffect(() => {
+  const getAllParticles = useCallback((): StarParticle[] => ([
+    ...particleSequences.backLayer,
+    ...particleSequences.midLayer,
+    ...particleSequences.frontLayer,
+  ]), [particleSequences]);
+
+  const drawStar = useCallback((
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    particle: StarParticle,
+    opacity: number
+  ) => {
+    const positionOverride = particlePositionOverridesRef.current.get(particle.id);
+    const baseX = positionOverride ? positionOverride.x : particle.x;
+    const baseY = positionOverride ? positionOverride.y : particle.y;
+    const x = baseX * canvas.width;
+    const y = baseY * canvas.height;
+    const finalOpacity = Math.max(0, Math.min(1, opacity));
+
+    ctx.beginPath();
+    ctx.arc(x, y, particle.size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity})`;
+    ctx.fill();
+
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, particle.glowRadius);
+    gradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.55})`);
+    gradient.addColorStop(0.5, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.24})`);
+    gradient.addColorStop(1, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, 0)`);
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, particle.glowRadius, 0, Math.PI * 2);
+    ctx.fill();
+  }, []);
+
+  const getStarOpacity = useCallback((particle: StarParticle, now: number) => {
+    const twinkle = activeTwinklesRef.current.get(particle.id);
+    if (!twinkle) return particle.baseOpacity;
+
+    const elapsed = now - twinkle.startTime - twinkle.delay;
+    if (elapsed < 0 || elapsed > twinkle.duration) return particle.baseOpacity;
+
+    const progress = elapsed / twinkle.duration;
+    const blink = Math.sin(progress * Math.PI);
+    return particle.baseOpacity + (twinkle.peakOpacity - particle.baseOpacity) * blink;
+  }, []);
+
+  const drawStarField = useCallback((now: number = Date.now()) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    getAllParticles().forEach((particle) => {
+      if (!allStarsVisibleRef.current && !revealedStarIdsRef.current.has(particle.id)) return;
+      if (meteorParticlesRef.current.has(particle.id)) return;
+      drawStar(ctx, canvas, particle, getStarOpacity(particle, now));
+    });
+  }, [drawStar, getAllParticles, getStarOpacity]);
+
+  // Canvas 星光层：平时静态，只在眨眼波/流星期间短暂重绘。
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
     // 设置 Canvas 尺寸为窗口大小
     const resizeCanvas = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      drawStarField();
     };
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // 合并所有粒子
-    const allParticles = [
-      ...particleSequences.backLayer,
-      ...particleSequences.midLayer,
-      ...particleSequences.frontLayer,
-    ];
-
-    let lastFrameTime = 0;
-    const targetFPS = isSmallMobile ? 18 : isMobile ? 24 : 60;
-    const frameInterval = 1000 / targetFPS;
-
-    // 渲染循环
-    const render = (timestamp: number = Date.now()) => {
-      if (timestamp - lastFrameTime < frameInterval) {
-        particleAnimationRef.current = requestAnimationFrame(render);
-        return;
-      }
-      lastFrameTime = timestamp;
-
-      const currentTime = Date.now();
-      const elapsedTime = (currentTime - startTimeRef.current) / 1000; // 转换为秒
-
-      // 清空画布
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // 绘制每个粒子
-      allParticles.forEach((particle) => {
-        // 检查是否是流星
-        const meteorInfo = meteorParticles.get(particle.id);
-        
-        if (meteorInfo) {
-          // 绘制流星效果
-          const meteorElapsed = (currentTime - meteorInfo.startTime) / 1000; // 流星经过时间（秒）
-          const meteorDuration = 1.15; // 流星短促划过
-          
-          if (meteorElapsed < meteorDuration) {
-            const meteorProgress = meteorElapsed / meteorDuration; // 0-1
-            
-            // 流星起点
-            const startX = meteorInfo.startX;
-            const startY = meteorInfo.startY;
-            
-            // 更接近真实流星：从天空上方斜向掠过，轨迹短而克制。
-            let travelX, travelY;
-            switch (meteorInfo.direction) {
-              case 0:
-                travelX = canvas.width * 0.34;
-                travelY = canvas.height * 0.24;
-                break;
-              case 1:
-                travelX = -canvas.width * 0.34;
-                travelY = canvas.height * 0.24;
-                break;
-              case 2:
-                travelX = canvas.width * 0.26;
-                travelY = canvas.height * 0.18;
-                break;
-              default:
-                travelX = -canvas.width * 0.26;
-                travelY = canvas.height * 0.18;
-            }
-            const endX = startX + travelX;
-            const endY = startY + travelY;
-            
-            // 当前流星位置（线性插值）
-            const easedProgress = 1 - Math.pow(1 - meteorProgress, 2);
-            const currentX = startX + (endX - startX) * easedProgress;
-            const currentY = startY + (endY - startY) * easedProgress;
-            
-            // 流星透明度：快速出现，随后柔和消失。
-            const meteorOpacity = meteorProgress < 0.12
-              ? meteorProgress / 0.12
-              : Math.max(0, 1 - (meteorProgress - 0.12) / 0.88);
-            
-            const vectorLength = Math.hypot(endX - startX, endY - startY) || 1;
-            const unitX = (endX - startX) / vectorLength;
-            const unitY = (endY - startY) / vectorLength;
-            const trailLength = Math.min(canvas.width, canvas.height) * (isMobile ? 0.24 : 0.2);
-            const tailX = currentX - unitX * trailLength;
-            const tailY = currentY - unitY * trailLength;
-
-            const trailGradient = ctx.createLinearGradient(tailX, tailY, currentX, currentY);
-            trailGradient.addColorStop(0, 'rgba(220, 235, 255, 0)');
-            trailGradient.addColorStop(0.72, `rgba(220, 235, 255, ${meteorOpacity * 0.22})`);
-            trailGradient.addColorStop(1, `rgba(255, 255, 255, ${meteorOpacity * 0.82})`);
-            ctx.save();
-            ctx.lineCap = 'round';
-            ctx.lineWidth = isMobile ? 1 : 1.25;
-            ctx.strokeStyle = trailGradient;
-            ctx.shadowColor = `rgba(190, 215, 255, ${meteorOpacity * 0.35})`;
-            ctx.shadowBlur = isMobile ? 3 : 5;
-            ctx.beginPath();
-            ctx.moveTo(tailX, tailY);
-            ctx.lineTo(currentX, currentY);
-            ctx.stroke();
-            ctx.restore();
-
-            ctx.beginPath();
-            ctx.arc(currentX, currentY, isMobile ? 1.15 : 1.4, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255, 255, 255, ${meteorOpacity * 0.9})`;
-            ctx.fill();
-          }
-          
-          return; // 流星状态下不绘制普通粒子
-        }
-        
-        // 普通粒子绘制
-        // 计算淡入进度（基于 fadeInDelay 和层级）
-        const fadeInStart = particle.fadeInDelay;
-        // 跳过后所有粒子使用1秒淡入，正常流程使用3-5秒淡入
-        const fadeInDuration = isSkipped ? 1 : (particle.layer === 'back' ? 3 : particle.layer === 'mid' ? 4 : 5);
-        const fadeInProgress = Math.min(1, Math.max(0, (elapsedTime - fadeInStart) / fadeInDuration));
-
-        // 如果还没开始淡入，跳过
-        if (fadeInProgress === 0) return;
-
-        // 计算闪烁动画的透明度变化（快速闪烁 + 长时间保持）
-        const animationTime = elapsedTime - fadeInStart - fadeInDuration + particle.flashPhase;
-        const cycleDuration = particle.flashDuration + particle.holdDuration; // 一个完整循环时长
-        const timeInCycle = animationTime % cycleDuration; // 当前在循环中的时间
-        
-        let flashOpacity;
-        if (timeInCycle < particle.flashDuration) {
-          // 闪烁阶段（0.5-2秒）：快速从最低→最高→最低
-          const flashProgress = timeInCycle / particle.flashDuration; // 0-1
-          // 使用正弦波实现平滑的 最低→最高→最低 变化
-          const sinValue = Math.sin(flashProgress * Math.PI); // 0→1→0
-          flashOpacity = particle.opacityMin + (particle.opacityMax - particle.opacityMin) * sinValue;
-        } else {
-          // 保持阶段（20-60秒）：保持在最低亮度
-          flashOpacity = particle.opacityMin;
-        }
-
-        // 最终透明度 = 淡入进度 × 闪烁透明度
-        const finalOpacity = fadeInProgress * flashOpacity;
-
-        // 获取粒子的基础位置（优先使用覆盖位置）
-        const positionOverride = particlePositionOverrides.get(particle.id);
-        const baseX = positionOverride ? positionOverride.x : particle.x;
-        const baseY = positionOverride ? positionOverride.y : particle.y;
-
-        // 计算浮动偏移（移动端取消移动动效，性能优化）
-        let driftOffsetX = 0;
-        let driftOffsetY = 0;
-        
-        if (!isMobile) {
-          // PC端：保留超级缓慢的浮动偏移（圆周运动）
-          const driftTime = elapsedTime - fadeInStart - fadeInDuration;
-          const driftCycle = (driftTime / particle.driftPeriod) * Math.PI * 2 + particle.driftPhase;
-          driftOffsetX = Math.cos(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
-          driftOffsetY = Math.sin(driftCycle + particle.driftAngle) * particle.driftRadius * fadeInProgress;
-        }
-
-        // 计算粒子位置（基础位置 + 浮动偏移）
-        const x = baseX * canvas.width + driftOffsetX;
-        const y = baseY * canvas.height + driftOffsetY;
-
-        // 绘制粒子（圆形）
-        ctx.beginPath();
-        ctx.arc(x, y, particle.size / 2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity})`;
-        ctx.fill();
-
-        // 绘制光晕效果（减小光晕范围：从2倍改为1.2倍）
-        const glowRadius = particle.size * 1.2;
-        const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
-        gradient.addColorStop(0, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.6})`);
-        gradient.addColorStop(0.5, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, ${finalOpacity * 0.3})`);
-        gradient.addColorStop(1, `rgba(${particle.colorR}, ${particle.colorG}, ${particle.colorB}, 0)`);
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      particleAnimationRef.current = requestAnimationFrame(render);
-    };
-
-    // 启动渲染循环
-    render();
-
     // 清理
     return () => {
       window.removeEventListener('resize', resizeCanvas);
-      if (particleAnimationRef.current) {
-        cancelAnimationFrame(particleAnimationRef.current);
+      if (starAnimationRef.current) {
+        cancelAnimationFrame(starAnimationRef.current);
+      }
+      if (meteorAnimationRef.current) {
+        cancelAnimationFrame(meteorAnimationRef.current);
       }
     };
-  }, [particleSequences, meteorParticles, particlePositionOverrides, isMobile, isSmallMobile, isSkipped]);
+  }, [drawStarField]);
+
+  // 开场星星逐步出现：每次随机露出 1-3 颗，emoji 出现时补齐全部星星。
+  useEffect(() => {
+    const allParticles = getAllParticles();
+    if (allParticles.length === 0) return;
+
+    if (emojisVisible) {
+      if (starRevealTimerRef.current) {
+        clearTimeout(starRevealTimerRef.current);
+      }
+      allStarsVisibleRef.current = true;
+      allParticles.forEach((particle) => revealedStarIdsRef.current.add(particle.id));
+      drawStarField();
+      return;
+    }
+
+    allStarsVisibleRef.current = false;
+    revealedStarIdsRef.current.clear();
+    drawStarField();
+
+    let isDisposed = false;
+    const revealNextStars = () => {
+      if (isDisposed || allStarsVisibleRef.current) return;
+
+      const hiddenParticles = allParticles.filter((particle) => (
+        !revealedStarIdsRef.current.has(particle.id)
+      ));
+
+      if (hiddenParticles.length === 0) return;
+
+      const revealCount = Math.min(hiddenParticles.length, 1 + Math.floor(Math.random() * 3));
+      shuffleArray(hiddenParticles).slice(0, revealCount).forEach((particle) => {
+        revealedStarIdsRef.current.add(particle.id);
+      });
+
+      drawStarField();
+
+      starRevealTimerRef.current = window.setTimeout(
+        revealNextStars,
+        220 + Math.random() * 620 + Math.random() * 180
+      );
+    };
+
+    starRevealTimerRef.current = window.setTimeout(
+      revealNextStars,
+      260 + Math.random() * 540
+    );
+
+    return () => {
+      isDisposed = true;
+      if (starRevealTimerRef.current) {
+        clearTimeout(starRevealTimerRef.current);
+      }
+    };
+  }, [drawStarField, emojisVisible, getAllParticles]);
+
+  // 星星眨眼：每波约 15% 星星参与，波次不重叠，平时不占用 rAF。
+  useEffect(() => {
+    const allParticles = getAllParticles();
+    if (allParticles.length === 0) return;
+
+    let isDisposed = false;
+    const activeTwinkles = activeTwinklesRef.current;
+
+    const scheduleNextTwinkle = (delay = 1200 + Math.random() * 2600) => {
+      if (twinkleTimerRef.current) {
+        clearTimeout(twinkleTimerRef.current);
+      }
+
+      twinkleTimerRef.current = window.setTimeout(() => {
+        if (isDisposed || document.hidden) {
+          scheduleNextTwinkle(1400 + Math.random() * 2400);
+          return;
+        }
+
+        if (meteorInFlightRef.current || twinkleWaveActiveRef.current) {
+          scheduleNextTwinkle(900 + Math.random() * 1600);
+          return;
+        }
+
+        const availableParticles = allParticles.filter((particle) => (
+          (allStarsVisibleRef.current || revealedStarIdsRef.current.has(particle.id)) &&
+          !meteorParticlesRef.current.has(particle.id) &&
+          !activeTwinklesRef.current.has(particle.id)
+        ));
+
+        if (availableParticles.length === 0) {
+          scheduleNextTwinkle();
+          return;
+        }
+
+        const selectedParticles = shuffleArray(availableParticles).slice(
+          0,
+          Math.max(1, Math.round(allParticles.length * 0.15))
+        );
+        const waveStart = Date.now();
+        let waveEnd = waveStart;
+
+        twinkleWaveActiveRef.current = true;
+        selectedParticles.forEach((particle) => {
+          const delay = Math.random() * 640 + Math.random() * 230;
+          const duration = 520 + Math.random() * 680;
+          waveEnd = Math.max(waveEnd, waveStart + delay + duration);
+          activeTwinklesRef.current.set(particle.id, {
+            startTime: waveStart,
+            delay,
+            duration,
+            peakOpacity: particle.maxOpacity,
+          });
+        });
+
+        let lastFrameTime = 0;
+        const frameInterval = 1000 / (isSmallMobile ? 18 : isMobile ? 22 : 26);
+
+        const animateTwinkle = (timestamp: number = Date.now()) => {
+          if (isDisposed) return;
+
+          if (timestamp - lastFrameTime < frameInterval) {
+            starAnimationRef.current = requestAnimationFrame(animateTwinkle);
+            return;
+          }
+          lastFrameTime = timestamp;
+
+          const now = Date.now();
+          drawStarField(now);
+
+          selectedParticles.forEach((particle) => {
+            const twinkle = activeTwinklesRef.current.get(particle.id);
+            if (twinkle && now > twinkle.startTime + twinkle.delay + twinkle.duration) {
+              activeTwinklesRef.current.delete(particle.id);
+            }
+          });
+
+          if (now <= waveEnd) {
+            starAnimationRef.current = requestAnimationFrame(animateTwinkle);
+            return;
+          }
+
+          selectedParticles.forEach((particle) => {
+            activeTwinklesRef.current.delete(particle.id);
+          });
+          twinkleWaveActiveRef.current = false;
+          drawStarField();
+          scheduleNextTwinkle();
+        };
+
+        starAnimationRef.current = requestAnimationFrame(animateTwinkle);
+      }, delay);
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && !twinkleWaveActiveRef.current) {
+        drawStarField();
+        scheduleNextTwinkle(900 + Math.random() * 1600);
+      }
+    };
+
+    scheduleNextTwinkle();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      isDisposed = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (twinkleTimerRef.current) {
+        clearTimeout(twinkleTimerRef.current);
+      }
+      if (starAnimationRef.current) {
+        cancelAnimationFrame(starAnimationRef.current);
+      }
+      activeTwinkles.clear();
+      twinkleWaveActiveRef.current = false;
+    };
+  }, [drawStarField, getAllParticles, isMobile, isSmallMobile]);
 
   // 🎯 Emoji 多彩辉光配置
   const generateGlowColors = useMemo(() => {
@@ -862,34 +1092,15 @@ function App() {
     }));
   }, [selectedEmojis]);
 
-  // 移动端轻量漂浮：只做 transform，错峰慢速，小范围移动。
-  const mobileEmojiAnimations = useMemo(() => {
-    return selectedEmojis.map((_, index) => ({
-      path1X: (Math.random() - 0.5) * (isSmallMobile ? 16 : 22),
-      path1Y: (Math.random() - 0.5) * (isSmallMobile ? 18 : 24),
-      path2X: (Math.random() - 0.5) * (isSmallMobile ? 20 : 28),
-      path2Y: (Math.random() - 0.5) * (isSmallMobile ? 20 : 28),
-      path3X: (Math.random() - 0.5) * (isSmallMobile ? 14 : 20),
-      path3Y: (Math.random() - 0.5) * (isSmallMobile ? 16 : 22),
-      rotate1: (Math.random() - 0.5) * 10,
-      rotate2: (Math.random() - 0.5) * 12,
-      rotate3: (Math.random() - 0.5) * 10,
-      duration: 42 + Math.random() * 38,
-      delay: 0.35 * index + Math.random() * 1.4,
-    }));
-  }, [selectedEmojis, isSmallMobile]);
-
   const emojiAnimations = useMemo(() => {
     return selectedEmojis.map((_, index) => {
-      const mobileAnim = mobileEmojiAnimations[index];
-
-      if (isMobile) {
-        return `emojiSimpleFadeIn ${isSkipped ? '1.2s' : '1.8s'} ease-out forwards, emojiMobileFloat-${index} ${mobileAnim.duration}s ease-in-out ${isSkipped ? 1.2 + mobileAnim.delay : 1.8 + mobileAnim.delay}s infinite`;
+      if (isTouchDevice) {
+        return `emojiSimpleFadeIn ${isSkipped ? '1.2s' : '1.8s'} ease-out forwards`;
       }
 
       return `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${emojiGlowDurations[index]}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`;
     });
-  }, [emojiGlowDurations, isMobile, isSkipped, mobileEmojiAnimations, selectedEmojis]);
+  }, [emojiGlowDurations, isSkipped, isTouchDevice, selectedEmojis]);
 
   // Emoji物理系统
   interface EmojiPhysics {
@@ -900,14 +1111,16 @@ function App() {
     rotation: number;
     rotationSpeed: number;
     startAt: number;
+    wanderPhase: number;
   }
 
-  const [emojiPhysics, setEmojiPhysics] = useState<EmojiPhysics[]>([]);
+  const emojiPhysicsRef = useRef<EmojiPhysics[]>([]);
   const [physicsEnabled, setPhysicsEnabled] = useState(false);
-  const [hoveredEmojiIndex, setHoveredEmojiIndex] = useState<number | null>(null); // 悬停的emoji索引
+  const hoveredEmojiIndexRef = useRef<number | null>(null); // 悬停的emoji索引
   const animationFrameRef = useRef<number>(0);
+  const emojiButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   // 根据屏幕尺寸调整emoji碰撞半径
-  const emojiSize = isSmallMobile ? 24 : isMobile ? 32 : 48;
+  const emojiSize = isSmallMobile ? 24 : isMobile ? 32 : isTouchDevice ? 40 : 48;
 
   // 27个Emoji的初始位置（淡入时使用） - 每次刷新随机打乱位置
   const emojiInitialPositions = useMemo(() => {
@@ -941,19 +1154,62 @@ function App() {
       { top: '95%', left: '75%' },
     ];
     
-    // 随机打乱全部27个位置
-    return shuffleArray(allPositions);
-  }, []);
+    if (!isTouchDevice) {
+      return shuffleArray(allPositions);
+    }
+
+    const count = selectedEmojis.length;
+    const minDistance = emojiSize;
+    const positions: { top: string; left: string }[] = [];
+
+    for (let i = 0; i < count; i++) {
+      let acceptedPosition: { x: number; y: number } | null = null;
+      const relaxedDistance = Math.max(emojiSize * 0.72, minDistance - i * 0.25);
+
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const candidate = {
+          x: 8 + Math.random() * 84,
+          y: 8 + Math.random() * 84,
+        };
+        const hasEnoughSpace = positions.every((position) => {
+          const dx = candidate.x - parseFloat(position.left);
+          const dy = candidate.y - parseFloat(position.top);
+          const distanceInPixels = Math.hypot(
+            (dx / 100) * viewportSize.width,
+            (dy / 100) * viewportSize.height
+          );
+          return distanceInPixels >= relaxedDistance;
+        });
+
+        if (hasEnoughSpace) {
+          acceptedPosition = candidate;
+          break;
+        }
+      }
+
+      const fallbackPosition = {
+        x: 8 + Math.random() * 84,
+        y: 8 + Math.random() * 84,
+      };
+      const nextPosition = acceptedPosition || fallbackPosition;
+      positions.push({
+        top: `${nextPosition.y}%`,
+        left: `${nextPosition.x}%`,
+      });
+    }
+
+    return positions;
+  }, [emojiSize, isTouchDevice, selectedEmojis.length, viewportSize]);
 
   const createEmojiPhysics = useCallback((): EmojiPhysics[] => {
     const now = Date.now();
-    return emojiInitialPositions.map((pos, index) => {
+    return emojiInitialPositions.slice(0, selectedEmojis.length).map((pos, index) => {
       const x = (parseFloat(pos.left) / 100) * window.innerWidth;
       const y = (parseFloat(pos.top) / 100) * window.innerHeight;
       const angle = Math.random() * Math.PI * 2;
-      const speed = 0.2 + Math.random() * 0.3;
-      const batchDelay = Math.floor(index / 5) * 650;
-      const randomDelay = Math.random() * 850;
+      const speed = isTouchDevice ? 0.16 + Math.random() * 0.12 : 0.2 + Math.random() * 0.3;
+      const batchDelay = isTouchDevice ? Math.floor(index / 4) * 420 : Math.floor(index / 5) * 650;
+      const randomDelay = isTouchDevice ? Math.random() * 550 : Math.random() * 850;
       
       return {
         x,
@@ -961,11 +1217,12 @@ function App() {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * 0.3,
+        rotationSpeed: (Math.random() - 0.5) * (isTouchDevice ? 0.12 : 0.3),
         startAt: now + batchDelay + randomDelay,
+        wanderPhase: Math.random() * Math.PI * 2,
       };
     });
-  }, [emojiInitialPositions]);
+  }, [emojiInitialPositions, isTouchDevice, selectedEmojis.length]);
 
   // 🎯 跳过入场动画功能
   const skipWelcomeAnimation = useCallback(() => {
@@ -1001,11 +1258,6 @@ function App() {
       });
       setWelcomePhase('sliding');
       
-      // 重置粒子时间基准，让所有粒子立即开始1秒淡入
-      // 将时间设为7秒前（所有粒子的fadeInDelay都已过），粒子会立即开始淡入
-      startTimeRef.current = Date.now() - 7000;
-      console.log('✨ 粒子时间基准已重置，3层粒子将同时淡入（1秒）');
-      
       const skipMoveDuration = hasVisibleLastLine ? welcomeMoveDuration : skipToBottomDuration;
       const skipSettleDuration = hasVisibleLastLine ? bottomLineSettleDuration : skipBottomLineSettleDuration;
 
@@ -1037,128 +1289,200 @@ function App() {
     skipBottomLineSettleDuration,
   ]);
 
-  // 初始化emoji物理属性（emoji可见后立即启动，仅PC端）
+  // 初始化emoji运动属性（emoji可见后立即启动）
   useEffect(() => {
-    // 移动端使用CSS动画，不需要物理引擎
-    if (isMobile) return;
     if (!emojisVisible) return;
     
-    if (!physicsEnabled && emojiPhysics.length === 0) {
-      setEmojiPhysics(createEmojiPhysics());
+    if (!physicsEnabled || emojiPhysicsRef.current.length !== selectedEmojis.length) {
+      emojiPhysicsRef.current = createEmojiPhysics();
       setPhysicsEnabled(true);
-      console.log('✅ 物理引擎已随Emoji可见状态启动，Emoji将随机分批动起来');
+      console.log(isTouchDevice
+        ? '✅ 触摸设备 Emoji 自由漫游已启动（低帧率柔和排斥）'
+        : '✅ 桌面端物理引擎已随Emoji可见状态启动，Emoji将随机分批动起来'
+      );
     }
-  }, [emojisVisible, physicsEnabled, emojiPhysics.length, createEmojiPhysics, isMobile]);
+  }, [emojisVisible, physicsEnabled, createEmojiPhysics, isTouchDevice, selectedEmojis.length]);
 
-  // 物理引擎 - 超级缓慢移动和反弹 + emoji间碰撞
+  // 物理引擎 - 桌面保留现有效果；触摸设备使用低帧率自由漫游 + 柔和排斥。
   useEffect(() => {
-    if (isMobile) return;
-    if (!physicsEnabled || emojiPhysics.length === 0) return;
+    if (!physicsEnabled || emojiPhysicsRef.current.length === 0) return;
 
     const damping = 0.92; // 阻尼系数（碰撞后保留92%速度）
     const restitution = 0.8; // 弹性系数（碰撞恢复系数）
+    const targetFPS = isTouchDevice ? (isSmallMobile ? 20 : 24) : 60;
+    const frameInterval = 1000 / targetFPS;
+    let lastFrameTime = 0;
     
-    const updatePhysics = () => {
-      setEmojiPhysics(prevPhysics => {
-        const now = Date.now();
-        // 第一步：更新所有emoji的位置
-        let newPhysics = prevPhysics.map((emoji, index) => {
-          let { x, y, vx, vy, rotation, rotationSpeed, startAt } = emoji;
-          
-          // 未到启动时间或被鼠标悬停时，保持当前位置。
-          if (now < startAt || index === hoveredEmojiIndex) {
-            return emoji; // 保持原位置，不移动
+    const updatePhysics = (timestamp: number = Date.now()) => {
+      if (timestamp - lastFrameTime < frameInterval) {
+        animationFrameRef.current = requestAnimationFrame(updatePhysics);
+        return;
+      }
+      lastFrameTime = timestamp;
+
+      const now = Date.now();
+      const hoveredEmojiIndex = hoveredEmojiIndexRef.current;
+      const newPhysics = emojiPhysicsRef.current;
+      const maxX = window.innerWidth - emojiSize / 2;
+      const maxY = window.innerHeight - emojiSize / 2;
+
+      // 第一步：更新所有emoji的位置
+      for (let index = 0; index < newPhysics.length; index++) {
+        const emoji = newPhysics[index];
+        if (now < emoji.startAt || index === hoveredEmojiIndex) continue;
+
+        if (isTouchDevice) {
+          const wander = Math.sin(now * 0.00035 + emoji.wanderPhase + index) * 0.006;
+          const crossWander = Math.cos(now * 0.00028 + emoji.wanderPhase - index) * 0.004;
+          emoji.vx += wander;
+          emoji.vy += crossWander;
+        }
+
+        emoji.x += emoji.vx;
+        emoji.y += emoji.vy;
+        emoji.rotation += emoji.rotationSpeed;
+
+        if (emoji.x <= emojiSize / 2) {
+          emoji.x = emojiSize / 2;
+          emoji.vx = Math.abs(emoji.vx) * (isTouchDevice ? 0.98 : damping);
+        } else if (emoji.x >= window.innerWidth - emojiSize / 2) {
+          emoji.x = maxX;
+          emoji.vx = -Math.abs(emoji.vx) * (isTouchDevice ? 0.98 : damping);
+        }
+
+        if (emoji.y <= emojiSize / 2) {
+          emoji.y = emojiSize / 2;
+          emoji.vy = Math.abs(emoji.vy) * (isTouchDevice ? 0.98 : damping);
+        } else if (emoji.y >= window.innerHeight - emojiSize / 2) {
+          emoji.y = maxY;
+          emoji.vy = -Math.abs(emoji.vy) * (isTouchDevice ? 0.98 : damping);
+        }
+
+        if (isTouchDevice) {
+          const speed = Math.hypot(emoji.vx, emoji.vy) || 1;
+          const minSpeed = isSmallMobile ? 0.1 : 0.12;
+          const maxSpeed = isSmallMobile ? 0.24 : 0.3;
+
+          if (speed < minSpeed) {
+            emoji.vx = (emoji.vx / speed) * minSpeed;
+            emoji.vy = (emoji.vy / speed) * minSpeed;
+          } else if (speed > maxSpeed) {
+            emoji.vx = (emoji.vx / speed) * maxSpeed;
+            emoji.vy = (emoji.vy / speed) * maxSpeed;
           }
-          
-          // 更新位置
-          x += vx;
-          y += vy;
-          rotation += rotationSpeed;
-          
-          // 屏幕边界碰撞检测和反弹
-          if (x <= emojiSize / 2) {
-            x = emojiSize / 2;
-            vx = Math.abs(vx) * damping;
-          } else if (x >= window.innerWidth - emojiSize / 2) {
-            x = window.innerWidth - emojiSize / 2;
-            vx = -Math.abs(vx) * damping;
+        }
+      }
+
+      if (isTouchDevice) {
+        const safeDistance = emojiSize;
+        const cellSize = safeDistance * 1.6;
+        const grid = new Map<string, number[]>();
+        const getGridKey = (x: number, y: number) =>
+          `${Math.floor(x / cellSize)}:${Math.floor(y / cellSize)}`;
+
+        newPhysics.forEach((emoji, index) => {
+          if (now < emoji.startAt) return;
+          const key = getGridKey(emoji.x, emoji.y);
+          const cell = grid.get(key);
+          if (cell) {
+            cell.push(index);
+          } else {
+            grid.set(key, [index]);
           }
-          
-          if (y <= emojiSize / 2) {
-            y = emojiSize / 2;
-            vy = Math.abs(vy) * damping;
-          } else if (y >= window.innerHeight - emojiSize / 2) {
-            y = window.innerHeight - emojiSize / 2;
-            vy = -Math.abs(vy) * damping;
-          }
-          
-          return { ...emoji, x, y, vx, vy, rotation };
         });
-        
-        // 第二步：检测并处理emoji之间的碰撞（移动端跳过，只保留边界反弹）
-        if (!isMobile) {
-          for (let i = 0; i < newPhysics.length; i++) {
-            // 跳过被悬停的emoji
-            if (i === hoveredEmojiIndex || now < newPhysics[i].startAt) continue;
-          
+
+        for (let i = 0; i < newPhysics.length; i++) {
+          const emoji1 = newPhysics[i];
+          if (now < emoji1.startAt) continue;
+
+          const gridX = Math.floor(emoji1.x / cellSize);
+          const gridY = Math.floor(emoji1.y / cellSize);
+
+          for (let offsetX = -1; offsetX <= 1; offsetX++) {
+            for (let offsetY = -1; offsetY <= 1; offsetY++) {
+              const nearby = grid.get(`${gridX + offsetX}:${gridY + offsetY}`);
+              if (!nearby) continue;
+
+              nearby.forEach((j) => {
+                if (j <= i || now < newPhysics[j].startAt) return;
+
+                const emoji2 = newPhysics[j];
+                const dx = emoji2.x - emoji1.x;
+                const dy = emoji2.y - emoji1.y;
+                const distance = Math.hypot(dx, dy) || 0.01;
+
+                if (distance >= safeDistance) return;
+
+                const nx = dx / distance;
+                const ny = dy / distance;
+                const repelStrength = (safeDistance - distance) / safeDistance;
+                const force = repelStrength * 0.045;
+
+                emoji1.vx -= nx * force;
+                emoji1.vy -= ny * force;
+                emoji2.vx += nx * force;
+                emoji2.vy += ny * force;
+
+                if (distance < safeDistance * 0.85) {
+                  const correction = (safeDistance * 0.85 - distance) * 0.04;
+                  emoji1.x -= nx * correction;
+                  emoji1.y -= ny * correction;
+                  emoji2.x += nx * correction;
+                  emoji2.y += ny * correction;
+                }
+              });
+            }
+          }
+        }
+      } else {
+        // 第二步：检测并处理emoji之间的碰撞
+        for (let i = 0; i < newPhysics.length; i++) {
+          if (i === hoveredEmojiIndex || now < newPhysics[i].startAt) continue;
+
           for (let j = i + 1; j < newPhysics.length; j++) {
-            // 跳过被悬停的emoji
             if (j === hoveredEmojiIndex || now < newPhysics[j].startAt) continue;
-            
+
             const emoji1 = newPhysics[i];
             const emoji2 = newPhysics[j];
-            
-            // 计算两个emoji中心的距离
             const dx = emoji2.x - emoji1.x;
             const dy = emoji2.y - emoji1.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            // 碰撞检测距离收近，让 Emoji 视觉上更贴近后再弹开。
             const minDistance = emojiSize * 0.8;
-            
+
             if (distance < minDistance && distance > 0) {
-              // 发生碰撞！
-              
-              // 计算碰撞法线（单位向量）
               const nx = dx / distance;
               const ny = dy / distance;
-              
-              // 计算相对速度
               const dvx = emoji2.vx - emoji1.vx;
               const dvy = emoji2.vy - emoji1.vy;
-              
-              // 相对速度在法线方向的分量
               const dvn = dvx * nx + dvy * ny;
-              
-              // 如果emoji正在远离，不处理碰撞
+
               if (dvn > 0) continue;
-              
-              // 计算碰撞冲量（假设质量相等）
+
               const impulse = -(1 + restitution) * dvn / 2;
-              
-              // 更新速度（弹性碰撞）
-              newPhysics[i].vx -= impulse * nx;
-              newPhysics[i].vy -= impulse * ny;
-              newPhysics[j].vx += impulse * nx;
-              newPhysics[j].vy += impulse * ny;
-              
-              // 分离重叠的emoji（避免卡住）
+              emoji1.vx -= impulse * nx;
+              emoji1.vy -= impulse * ny;
+              emoji2.vx += impulse * nx;
+              emoji2.vy += impulse * ny;
+
               const overlap = minDistance - distance;
               const separationX = (overlap / 2) * nx;
               const separationY = (overlap / 2) * ny;
-              
-              newPhysics[i].x -= separationX;
-              newPhysics[i].y -= separationY;
-              newPhysics[j].x += separationX;
-              newPhysics[j].y += separationY;
-              
-              console.log(`💥 Emoji碰撞: #${i} ↔ #${j}`);
+              emoji1.x -= separationX;
+              emoji1.y -= separationY;
+              emoji2.x += separationX;
+              emoji2.y += separationY;
             }
           }
-          }
         }
-        
-        return newPhysics;
+      }
+
+      newPhysics.forEach((emoji, index) => {
+        const button = emojiButtonRefs.current[index];
+        if (!button) return;
+
+        button.style.left = `${emoji.x}px`;
+        button.style.top = `${emoji.y}px`;
+        button.style.transform = `translate(-50%, -50%) rotate(${emoji.rotation}deg)`;
       });
       
       animationFrameRef.current = requestAnimationFrame(updatePhysics);
@@ -1171,22 +1495,31 @@ function App() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [physicsEnabled, emojiPhysics.length, hoveredEmojiIndex, isMobile]);
+  }, [physicsEnabled, emojiSize, isSmallMobile, isTouchDevice]);
 
   // 触发流星效果的通用函数
   const triggerMeteor = useCallback(() => {
-    const allParticles = [
-      ...particleSequences.frontLayer,
-      ...particleSequences.midLayer,
-      ...particleSequences.backLayer,
-    ];
+    const allParticles = getAllParticles();
     
     const activeMeteors = meteorParticlesRef.current;
+    if (meteorInFlightRef.current) return;
+    if (activeMeteors.size > 0) return;
+
     const positionOverrides = particlePositionOverridesRef.current;
     // 过滤出不是流星的粒子
-    const availableParticles = allParticles.filter(p => !activeMeteors.has(p.id));
+    const availableParticles = allParticles.filter((particle) => (
+      (allStarsVisibleRef.current || revealedStarIdsRef.current.has(particle.id)) &&
+      !activeMeteors.has(particle.id)
+    ));
     
     if (availableParticles.length > 0) {
+      meteorInFlightRef.current = true;
+      if (starAnimationRef.current) {
+        cancelAnimationFrame(starAnimationRef.current);
+      }
+      activeTwinklesRef.current.clear();
+      twinkleWaveActiveRef.current = false;
+
       const randomParticle = availableParticles[Math.floor(Math.random() * availableParticles.length)];
       const canvas = canvasRef.current;
       
@@ -1200,49 +1533,134 @@ function App() {
         // 随机选择更自然的斜向下路径。
         const randomDirection = Math.floor(Math.random() * 4);
         const directionNames = ['右下斜掠', '左下斜掠', '短右下斜掠', '短左下斜掠'];
-        
-        // 记录流星起点和方向
-        setMeteorParticles(prev => {
-          const newMap = new Map(prev);
-          newMap.set(randomParticle.id, {
+
+        const brightenStart = Date.now();
+        const brightenDuration = 380 + Math.random() * 160;
+        activeTwinklesRef.current.set(randomParticle.id, {
+          startTime: brightenStart,
+          delay: 0,
+          duration: brightenDuration,
+          peakOpacity: randomParticle.maxOpacity,
+        });
+
+        const animateBrighten = () => {
+          const now = Date.now();
+          drawStarField(now);
+
+          if (now < brightenStart + brightenDuration) {
+            meteorAnimationRef.current = requestAnimationFrame(animateBrighten);
+            return;
+          }
+
+          activeTwinklesRef.current.delete(randomParticle.id);
+          meteorParticlesRef.current.set(randomParticle.id, {
             startTime: Date.now(),
             startX,
             startY,
             direction: randomDirection,
           });
-          return newMap;
-        });
-        
-        console.log(`✨ 流星出现：${randomParticle.id}，方向：${directionNames[randomDirection]}`);
-        
-        // 流星消失后，原粒子在新随机位置重生。
-        setTimeout(() => {
-          // 生成新的随机位置（确保与当前位置不同）
-          let newX, newY;
-          do {
-            newX = Math.random();
-            newY = Math.random();
-          } while (Math.abs(newX - currentX) < 0.2 && Math.abs(newY - currentY) < 0.2); // 确保新位置距离当前位置足够远
           
-          // 更新粒子位置
-          setParticlePositionOverrides(prev => {
-            const newMap = new Map(prev);
-            newMap.set(randomParticle.id, { x: newX, y: newY });
-            return newMap;
-          });
-          
-          // 移除流星标记
-          setMeteorParticles(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(randomParticle.id);
-            return newMap;
-          });
-          
-          console.log(`🌟 流星消失，粒子在新位置重生：${randomParticle.id}，位置：(${(newX * 100).toFixed(1)}%, ${(newY * 100).toFixed(1)}%)`);
-        }, 1200);
+          console.log(`✨ 流星出现：${randomParticle.id}，方向：${directionNames[randomDirection]}`);
+
+          const animateMeteor = () => {
+            const ctx = canvas.getContext('2d', { alpha: true });
+            const meteorInfo = meteorParticlesRef.current.get(randomParticle.id);
+            if (!ctx || !meteorInfo) {
+              meteorInFlightRef.current = false;
+              return;
+            }
+
+            const currentTime = Date.now();
+            const meteorElapsed = (currentTime - meteorInfo.startTime) / 1000;
+            const meteorDuration = 1.15;
+
+            drawStarField(currentTime);
+
+            if (meteorElapsed < meteorDuration) {
+              const meteorProgress = meteorElapsed / meteorDuration;
+              let travelX, travelY;
+              switch (meteorInfo.direction) {
+                case 0:
+                  travelX = canvas.width * 0.34;
+                  travelY = canvas.height * 0.24;
+                  break;
+                case 1:
+                  travelX = -canvas.width * 0.34;
+                  travelY = canvas.height * 0.24;
+                  break;
+                case 2:
+                  travelX = canvas.width * 0.26;
+                  travelY = canvas.height * 0.18;
+                  break;
+                default:
+                  travelX = -canvas.width * 0.26;
+                  travelY = canvas.height * 0.18;
+              }
+
+              const endX = meteorInfo.startX + travelX;
+              const endY = meteorInfo.startY + travelY;
+              const easedProgress = 1 - Math.pow(1 - meteorProgress, 2);
+              const currentX = meteorInfo.startX + (endX - meteorInfo.startX) * easedProgress;
+              const currentY = meteorInfo.startY + (endY - meteorInfo.startY) * easedProgress;
+              const meteorOpacity = meteorProgress < 0.12
+                ? meteorProgress / 0.12
+                : Math.max(0, 1 - (meteorProgress - 0.12) / 0.88);
+              const vectorLength = Math.hypot(endX - meteorInfo.startX, endY - meteorInfo.startY) || 1;
+              const unitX = (endX - meteorInfo.startX) / vectorLength;
+              const unitY = (endY - meteorInfo.startY) / vectorLength;
+              const trailLength = Math.min(canvas.width, canvas.height) * (isMobile ? 0.24 : 0.2);
+              const tailX = currentX - unitX * trailLength;
+              const tailY = currentY - unitY * trailLength;
+
+              const trailGradient = ctx.createLinearGradient(tailX, tailY, currentX, currentY);
+              trailGradient.addColorStop(0, 'rgba(220, 235, 255, 0)');
+              trailGradient.addColorStop(0.72, `rgba(220, 235, 255, ${meteorOpacity * 0.22})`);
+              trailGradient.addColorStop(1, `rgba(255, 255, 255, ${meteorOpacity * 0.82})`);
+              ctx.save();
+              ctx.lineCap = 'round';
+              ctx.lineWidth = isMobile ? 1 : 1.25;
+              ctx.strokeStyle = trailGradient;
+              ctx.shadowColor = `rgba(190, 215, 255, ${meteorOpacity * 0.35})`;
+              ctx.shadowBlur = isMobile ? 3 : 5;
+              ctx.beginPath();
+              ctx.moveTo(tailX, tailY);
+              ctx.lineTo(currentX, currentY);
+              ctx.stroke();
+              ctx.restore();
+
+              ctx.beginPath();
+              ctx.arc(currentX, currentY, isMobile ? 1.15 : 1.4, 0, Math.PI * 2);
+              ctx.fillStyle = `rgba(255, 255, 255, ${meteorOpacity * 0.9})`;
+              ctx.fill();
+
+              meteorAnimationRef.current = requestAnimationFrame(animateMeteor);
+              return;
+            }
+
+            // 生成新的随机位置（确保与当前位置不同）
+            let newX, newY;
+            do {
+              newX = Math.random();
+              newY = Math.random();
+            } while (Math.abs(newX - currentX) < 0.2 && Math.abs(newY - currentY) < 0.2); // 确保新位置距离当前位置足够远
+
+            particlePositionOverridesRef.current.set(randomParticle.id, { x: newX, y: newY });
+            meteorParticlesRef.current.delete(randomParticle.id);
+            meteorInFlightRef.current = false;
+            drawStarField();
+
+            console.log(`🌟 流星消失，粒子在新位置重生：${randomParticle.id}，位置：(${(newX * 100).toFixed(1)}%, ${(newY * 100).toFixed(1)}%)`);
+          };
+
+          meteorAnimationRef.current = requestAnimationFrame(animateMeteor);
+        };
+
+        meteorAnimationRef.current = requestAnimationFrame(animateBrighten);
+      } else {
+        meteorInFlightRef.current = false;
       }
     }
-  }, [particleSequences]);
+  }, [drawStarField, getAllParticles, isMobile]);
 
   // 流星效果：首次快速出现，之后低频随机出现
   useEffect(() => {
@@ -1277,6 +1695,21 @@ function App() {
     setIsLoved(true);
     setShowQRCode(true);
   };
+
+  const getNearestEmojiIndex = useCallback((x: number, y: number) => {
+    let nearestIndex = -1;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    emojiPhysicsRef.current.forEach((emoji, index) => {
+      const distance = Math.hypot(emoji.x - x, emoji.y - y);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    });
+
+    return nearestDistance <= emojiSize * 0.9 ? nearestIndex : -1;
+  }, [emojiSize]);
 
   // 处理关闭按钮点击
   const handleCloseClick = () => {
@@ -1328,6 +1761,9 @@ function App() {
 
   // AI 调用核心逻辑
   const handleEmojiClick = async (keyword: string, mood: string) => {
+    if (isRequestInFlightRef.current) return;
+    isRequestInFlightRef.current = true;
+
     console.log('🎭 点击了 Emoji:', { keyword, mood });
     triggerMeteor();
     setShowPrompt(false); // 隐藏提示词
@@ -1405,6 +1841,7 @@ function App() {
         alert('获取诗句失败，且数据库中暂无备用诗句。请稍后重试。');
       }
     } finally {
+      isRequestInFlightRef.current = false;
       setIsLoading(false);
     }
   };
@@ -1625,75 +2062,38 @@ function App() {
         </div>
       )}
 
-      {/* 黎明渐变背景层 - 0-3秒淡入 */}
-      <div
+      {/* 深空背景层 - 一次性绘制，不持续动画 */}
+      <canvas
+        ref={deepSpaceCanvasRef}
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'linear-gradient(180deg, #0a0e27 0%, #1a1a3e 100%)',
-          opacity: 0,
-          animation: isMobile
-            ? 'backgroundFadeIn3s 3s ease-out forwards'
-            : 'backgroundFadeIn3s 3s ease-out forwards, dawnGradient 40s ease-in-out 3s infinite',
           zIndex: 0,
+          pointerEvents: 'none',
+          background: '#050716',
         }}
       />
 
-      {/* 光芒层 - 1-5秒淡入 */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none', overflow: 'hidden', opacity: 0, animation: 'glowLayerFadeIn 4s ease-out 1s forwards' }}>
-        {/* 核心光芒 */}
+      {/* 桌面端轻量光感层：不使用大面积 blur，触摸设备关闭 */}
+      {!isTouchDevice && (
         <div
           style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            width: isMobile ? '120vw' : '150vw',
-            height: isMobile ? '120vh' : '150vh',
-            borderRadius: '50%',
-            background: `radial-gradient(circle, rgba(255, 215, 0, ${isMobile ? 0.09 : 0.15}) 0%, transparent 70%)`,
-            filter: `blur(${isMobile ? 28 : 60}px)`,
-            animation: isMobile ? 'none' : 'glow 12s ease-in-out 5s infinite',
-            willChange: isMobile ? 'auto' : 'transform, opacity',
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1,
+            pointerEvents: 'none',
+            opacity: 0,
+            background: [
+              'radial-gradient(circle at 52% 58%, rgba(218, 176, 78, 0.08) 0%, rgba(218, 176, 78, 0.035) 23%, transparent 48%)',
+              'radial-gradient(circle at 32% 34%, rgba(88, 102, 190, 0.09) 0%, rgba(88, 102, 190, 0.04) 28%, transparent 56%)',
+              'radial-gradient(circle at 72% 70%, rgba(118, 58, 150, 0.08) 0%, rgba(118, 58, 150, 0.03) 24%, transparent 52%)',
+            ].join(', '),
+            animation: 'glowLayerFadeIn 4s ease-out 1s forwards, deepSpaceGlowBreath 58s ease-in-out 5s infinite',
+            willChange: 'opacity, transform',
             backfaceVisibility: 'hidden',
           }}
         />
-        {/* 第二层光芒 */}
-        {!isMobile && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              width: '180vw',
-              height: '180vh',
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(255, 215, 0, 0.1) 0%, transparent 70%)',
-              filter: 'blur(80px)',
-              animation: 'glowSlow 18s ease-in-out 5s infinite',
-              willChange: 'transform, opacity',
-              backfaceVisibility: 'hidden',
-            }}
-          />
-        )}
-        {/* 第三层光芒 */}
-        {!isMobile && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              width: '200vw',
-              height: '200vh',
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(255, 215, 0, 0.08) 0%, transparent 70%)',
-              filter: 'blur(100px)',
-              animation: 'glowSlowest 25s ease-in-out 5s infinite',
-              willChange: 'transform, opacity',
-              backfaceVisibility: 'hidden',
-            }}
-          />
-        )}
-      </div>
+      )}
 
       {/* Canvas 粒子系统 - 负责星空和流星；移动端低帧率、低粒子数 */}
       <canvas
@@ -1722,15 +2122,29 @@ function App() {
           const glowColor = generateGlowColors[index];
           const glowSize = emojiGlowSizes[index];
           const initialPos = emojiInitialPositions[index];
-          const physics = emojiPhysics[index];
-          
-          // PC端使用物理引擎，移动端使用CSS动画
-          const usePhysics = !isMobile && physicsEnabled && physics;
+          const physics = emojiPhysicsRef.current[index];
+          const usePhysics = physicsEnabled && physics;
+          const emojiFilter = isTouchDevice
+            ? 'none'
+            : `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`;
+          const emojiTextShadow = isTouchDevice
+            ? `0 0 0.42rem rgba(${glowColor}, 0.22)`
+            : 'none';
           
           return (
             <button
               key={index}
-              onClick={() => handleEmojiClick(item.keyword, item.mood)}
+              ref={(element) => {
+                emojiButtonRefs.current[index] = element;
+              }}
+              onClick={(event) => {
+                if (isTouchDevice && physicsEnabled) {
+                  const nearestIndex = getNearestEmojiIndex(event.clientX, event.clientY);
+                  if (nearestIndex !== index) return;
+                }
+
+                handleEmojiClick(item.keyword, item.mood);
+              }}
               className="cursor-pointer"
               style={{
                 position: 'absolute',
@@ -1749,32 +2163,31 @@ function App() {
                 background: 'transparent',
                 pointerEvents: 'auto',
                 opacity: emojisVisible ? 1 : 0,
-                filter: `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`,
+                filter: emojiFilter,
+                textShadow: emojiTextShadow,
                 animation: emojisVisible ? emojiAnimations[index] : 'none',
-                transition: 'filter 0.3s ease',
-                willChange: usePhysics ? 'transform, filter' : isMobile ? 'transform, opacity' : 'filter',
+                transition: isTouchDevice ? 'none' : 'filter 0.3s ease',
+                willChange: usePhysics ? (isTouchDevice ? 'transform, opacity' : 'transform, filter') : isTouchDevice ? 'transform, opacity' : 'filter',
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
               }}
               onMouseEnter={(e) => {
                 // PC端：增强辉光效果
-                if (!isMobile) {
+                if (!isTouchDevice) {
                   e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.maxSize * 1.5}px rgba(${glowColor}, ${glowSize.maxOpacity * 1.2}))`;
                   // 暂停emoji移动
-                  setHoveredEmojiIndex(index);
+                  hoveredEmojiIndexRef.current = index;
                   console.log(`🖱️ 鼠标悬停: ${item.emoji} ${item.mood} (暂停移动)`);
                 }
               }}
               onMouseLeave={(e) => {
                 // PC端：恢复辉光效果
-                if (!isMobile) {
+                if (!isTouchDevice) {
                   e.currentTarget.style.filter = `drop-shadow(0 0 ${glowSize.minSize}px rgba(${glowColor}, ${glowSize.minOpacity}))`;
                   // 恢复emoji移动
-                  setHoveredEmojiIndex(null);
+                  hoveredEmojiIndexRef.current = null;
                   console.log(`🖱️ 鼠标离开: ${item.emoji} ${item.mood} (恢复移动)`);
                 }
-              }}
-              onTouchStart={(e) => {
-                // 移动端：触摸时不暂停，直接触发点击
-                e.preventDefault();
               }}
               title={item.mood}
             >
@@ -1784,7 +2197,7 @@ function App() {
         })}
         
         {/* 动态生成每个emoji的辉光呼吸动画（仅桌面端使用） */}
-        {!isMobile && (
+        {!isTouchDevice && (
           <style>{`
             ${selectedEmojis.map((_, index) => {
               const glowColor = generateGlowColors[index];
@@ -1803,29 +2216,6 @@ function App() {
           `}</style>
         )}
 
-        {isMobile && (
-          <style>{`
-            ${selectedEmojis.map((_, index) => {
-              const mobileAnim = mobileEmojiAnimations[index];
-              return `
-                @keyframes emojiMobileFloat-${index} {
-                  0%, 100% {
-                    transform: translate(-50%, -50%) rotate(0deg);
-                  }
-                  24% {
-                    transform: translate(calc(-50% + ${mobileAnim.path1X}px), calc(-50% + ${mobileAnim.path1Y}px)) rotate(${mobileAnim.rotate1}deg);
-                  }
-                  52% {
-                    transform: translate(calc(-50% + ${mobileAnim.path2X}px), calc(-50% + ${mobileAnim.path2Y}px)) rotate(${mobileAnim.rotate2}deg);
-                  }
-                  78% {
-                    transform: translate(calc(-50% + ${mobileAnim.path3X}px), calc(-50% + ${mobileAnim.path3Y}px)) rotate(${mobileAnim.rotate3}deg);
-                  }
-                }
-              `;
-            }).join('\n')}
-          `}</style>
-        )}
       </div>
 
       {/* 诗句展示区域（中央） */}
@@ -1835,7 +2225,7 @@ function App() {
           onClick={handleOutsideClick}
         >
           <div 
-            className="poem-display bg-black/40 backdrop-blur-md rounded-2xl p-8 max-w-2xl"
+            className={`poem-display bg-black/40 ${isMobile ? '' : 'backdrop-blur-md'} rounded-2xl p-8 max-w-2xl`}
             style={{
               minWidth: '20rem', // 最小宽度：约10个字符的长度（可自行调整）
               animation: isPoemFadingOut ? 'poemFadeOut 0.8s ease-out forwards' : 'none',

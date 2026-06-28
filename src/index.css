@@ -367,6 +367,22 @@ body {
   }
 }
 
+/* 桌面端深空轻量光感：只做透明度和极小位移，不使用大面积 blur */
+@keyframes deepSpaceGlowBreath {
+  0%, 100% {
+    opacity: 0.72;
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  33% {
+    opacity: 0.9;
+    transform: scale(1.025) translate3d(-1.2%, 0.8%, 0);
+  }
+  66% {
+    opacity: 0.78;
+    transform: scale(1.015) translate3d(1%, -0.6%, 0);
+  }
+}
+
 /* 背景层粒子淡入 - 3-6秒（3秒持续） */
 @keyframes particleBackLayerFadeIn {
   0% {
