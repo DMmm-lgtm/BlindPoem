@@ -17,8 +17,8 @@ export async function generatePoem(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort();
-    console.log('⏱️ API 请求超时（12秒），将从数据库读取备用诗句');
-  }, 12000);
+    console.log('⏱️ API 请求超时（27秒），将从数据库读取备用诗句');
+  }, 27000);
 
   try {
     const response = await fetch('/api/generate-poem', {

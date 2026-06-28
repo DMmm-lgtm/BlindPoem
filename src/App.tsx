@@ -213,9 +213,9 @@ function App() {
     const screenArea = viewportSize.width * viewportSize.height;
     const targetCount = isTouchDevice
       ? isSmallMobile
-        ? clamp(Math.round(screenArea / 42000), 8, 12)
+        ? clamp(Math.round(screenArea / 30000), 12, 18)
         : isMobile
-          ? clamp(Math.round(screenArea / 46000), 10, 16)
+          ? clamp(Math.round(screenArea / 36000), 14, 22)
           : clamp(Math.round(screenArea / 52000), 16, 28)
       : 27;
     
