@@ -2,6 +2,10 @@
 // 保护 AI API Key，不暴露在前端
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+export const config = {
+  maxDuration: 30,
+};
+
 interface PoemData {
   content: string;
   poem_title: string;
@@ -15,6 +19,8 @@ const OPENROUTER_FREE_TEXT_MODELS = [
   'liquid/lfm-2.5-1.2b-instruct:free',
   'openrouter/free',
 ];
+const OPENROUTER_MODEL_TIMEOUT_MS = 8000;
+const OPENROUTER_MAX_MODEL_ATTEMPTS = 3;
 
 function buildPoemPrompt(moodName: string, shouldMatchMood: boolean): string {
   const mode = shouldMatchMood
@@ -163,31 +169,46 @@ async function requestOpenRouterModel(fullPrompt: string, model: string): Promis
 
   console.log(`🤖 OpenRouter 尝试模型: ${model}`);
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'https://blindpoem.vercel.app',
-      'X-Title': process.env.OPENROUTER_APP_NAME || 'BlindPoem',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: 'Return JSON only. Recommend one real poem line with known title and author.',
-        },
-        {
-          role: 'user',
-          content: fullPrompt,
-        },
-      ],
-      temperature: 0.75,
-      top_p: 0.9,
-      max_tokens: 256,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OPENROUTER_MODEL_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'https://blindpoem.vercel.app',
+        'X-Title': process.env.OPENROUTER_APP_NAME || 'BlindPoem',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'Return JSON only. Recommend one real poem line with known title and author.',
+          },
+          {
+            role: 'user',
+            content: fullPrompt,
+          },
+        ],
+        temperature: 0.75,
+        top_p: 0.9,
+        max_tokens: 256,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`OpenRouter model timeout after ${OPENROUTER_MODEL_TIMEOUT_MS / 1000}s`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   console.log('📥 收到 OpenRouter 响应，状态码:', response.status);
 
@@ -222,7 +243,9 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
 
   let lastError: unknown;
 
-  for (const model of getOpenRouterModels()) {
+  const models = getOpenRouterModels().slice(0, OPENROUTER_MAX_MODEL_ATTEMPTS);
+
+  for (const model of models) {
     try {
       return await requestOpenRouterModel(fullPrompt, model);
     } catch (error) {
@@ -235,7 +258,7 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
     throw lastError;
   }
 
-  throw new Error('所有 OpenRouter 模型都不可用');
+  throw new Error(`所有 OpenRouter 模型都不可用（已尝试 ${models.length} 个）`);
 }
 
 // Gemini direct provider is intentionally disabled.

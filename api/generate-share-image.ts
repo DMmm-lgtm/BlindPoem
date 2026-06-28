@@ -6,6 +6,15 @@ type ShareImageRequest = {
   author?: string;
 };
 
+type CloudflareImageJsonResponse = {
+  result?: {
+    image?: string;
+  } | string;
+  image?: string;
+  success?: boolean;
+  errors?: unknown[];
+};
+
 const DEFAULT_CLOUDFLARE_IMAGE_MODEL = '@cf/black-forest-labs/flux-1-schnell';
 
 function buildImagePrompt(content: string, poemTitle: string, author: string): string {
@@ -28,6 +37,38 @@ function getCloudflareImageEndpoint(accountId: string, model: string): string {
     .join('/');
 
   return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${encodedModel}`;
+}
+
+function normalizeBase64Image(image: string): string {
+  if (image.startsWith('data:image/')) {
+    return image;
+  }
+
+  return `data:image/png;base64,${image}`;
+}
+
+async function readCloudflareImage(response: Response): Promise<string> {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    const result = await response.json() as CloudflareImageJsonResponse;
+    const image = typeof result.result === 'string'
+      ? result.result
+      : result.result?.image || result.image;
+
+    if (!image) {
+      throw new Error(`Cloudflare AI returned JSON without an image: ${JSON.stringify({
+        success: result.success,
+        errors: result.errors,
+      })}`);
+    }
+
+    return normalizeBase64Image(image);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const base64 = Buffer.from(arrayBuffer).toString('base64');
+  return `data:${contentType || 'image/png'};base64,${base64}`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -75,12 +116,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const contentType = response.headers.get('content-type') || 'image/png';
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const image = await readCloudflareImage(response);
 
     return res.status(200).json({
-      image: `data:${contentType};base64,${base64}`,
+      image,
       model,
       provider: 'cloudflare-ai',
     });
