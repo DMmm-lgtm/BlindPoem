@@ -1674,7 +1674,9 @@ function App() {
       console.log(`🌠 下一次流星将在 ${(randomInterval / 1000).toFixed(1)} 秒后出现`);
       
       meteorTimer = window.setTimeout(() => {
-        triggerMeteor();
+        if (emojisVisible) {
+          triggerMeteor();
+        }
         // 触发后立即安排下一次流星
         scheduleMeteor();
       }, randomInterval);
@@ -1688,7 +1690,7 @@ function App() {
         clearTimeout(meteorTimer);
       }
     };
-  }, [triggerMeteor]);
+  }, [emojisVisible, triggerMeteor]);
 
   // 处理爱心点击
   const handleLoveClick = () => {
@@ -2254,27 +2256,35 @@ function App() {
                 关闭
               </button>
               
-              {/* 爱心按钮区域 - 根据诗句长度动态显示 */}
-              {showLoveButton && (
-                <div className="flex items-center gap-1.5">
+              {/* 爱心按钮区域 - 固定占位，避免提示出现时撑大诗句框 */}
+              <div
+                className="flex items-center justify-end gap-1.5"
+                style={{
+                  minWidth: isSmallMobile ? '8.75rem' : '10.75rem',
+                  minHeight: isSmallMobile ? '2.25rem' : '2.75rem',
+                }}
+              >
+                {showLoveButton && (
+                  <>
                   {/* 提示文字 - 高光划过效果 */}
-                  {!isLoved && (
-                    <span
-                      className="love-hint-text"
-                      style={{
-                        fontSize: '0.875rem',
-                        color: 'rgba(255, 215, 0, 0.8)',
-                        fontFamily: 'QianTuBiFeng, sans-serif',
-                        whiteSpace: 'nowrap',
-                        animation: 'loveHintFadeIn 0.8s ease-out 1.5s forwards, loveHintShine 2.5s linear 2.5s infinite',
-                        opacity: 0,
-                        position: 'relative',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      喜欢就点个赞吧！
-                    </span>
-                  )}
+                  <span
+                    className="love-hint-text"
+                    style={{
+                      fontSize: '0.875rem',
+                      color: 'rgba(255, 215, 0, 0.8)',
+                      fontFamily: 'QianTuBiFeng, sans-serif',
+                      whiteSpace: 'nowrap',
+                      animation: isLoved
+                        ? 'none'
+                        : 'loveHintFadeIn 0.8s ease-out 1.5s forwards, loveHintShine 2.5s linear 2.5s infinite',
+                      opacity: isLoved ? 0 : 0,
+                      visibility: isLoved ? 'hidden' : 'visible',
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    喜欢就点个赞吧！
+                  </span>
                   
                   {/* 爱心按钮 */}
                   <button
@@ -2295,8 +2305,9 @@ function App() {
                   >
                     {isLoved ? '❤️' : '🤍'}
                   </button>
-                </div>
-              )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
           

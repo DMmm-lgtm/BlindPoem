@@ -16,6 +16,51 @@ const OPENROUTER_FREE_TEXT_MODELS = [
   'openrouter/free',
 ];
 
+function buildPoemPrompt(moodName: string, shouldMatchMood: boolean): string {
+  const mode = shouldMatchMood
+    ? `贴合情绪：${moodName}`
+    : `不要按情绪选诗；随机选一首好诗中的一句`;
+
+  return `${mode}
+真实诗句。必须有明确作者和篇名，不能佚名/未知。中英古今均可。
+返回JSON：{"content":"","poem_title":"","author":""}`;
+}
+
+function validatePoemData(poemData: PoemData): PoemData {
+  const content = String(poemData.content || '')
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+    .replace(/[《》]/g, '')
+    .trim();
+  const poemTitle = String(poemData.poem_title || '').trim();
+  const author = String(poemData.author || '').trim();
+
+  if (!content || !poemTitle || !author) {
+    throw new Error('返回数据不完整');
+  }
+
+  if (/^(未知|佚名|无)$/i.test(content) || content.length < 2) {
+    throw new Error('诗句内容无效');
+  }
+
+  if (/^(未知|佚名|无|anonymous|unknown)$/i.test(poemTitle)) {
+    throw new Error('诗句篇目无效');
+  }
+
+  if (/^(未知|佚名|无|anonymous|unknown)$/i.test(author)) {
+    throw new Error('诗句作者无效');
+  }
+
+  if (content.length > 120) {
+    throw new Error('诗句过长');
+  }
+
+  return {
+    content,
+    poem_title: poemTitle,
+    author,
+  };
+}
+
 function parsePoemJson(text: string): PoemData {
   const cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
@@ -23,39 +68,7 @@ function parsePoemJson(text: string): PoemData {
   if (jsonMatch) {
     const poemData = JSON.parse(jsonMatch[0]);
 
-    if (!poemData.content || !poemData.poem_title || !poemData.author) {
-      throw new Error('返回数据不完整');
-    }
-
-    return poemData;
-  }
-
-  const lines = cleanedText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const contentLine = lines.find((line) => (
-    !/^content[:：]/i.test(line)
-    && !/^poem_title[:：]/i.test(line)
-    && !/^title[:：]/i.test(line)
-    && !/^author[:：]/i.test(line)
-    && !/^作品[:：]/.test(line)
-    && !/^作者[:：]/.test(line)
-  ));
-
-  if (contentLine) {
-    const content = contentLine
-      .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
-      .replace(/^[\-*•\d.、\s]+/, '')
-      .trim();
-
-    if (content) {
-      return {
-        content,
-        poem_title: '未知',
-        author: '佚名',
-      };
-    }
+    return validatePoemData(poemData);
   }
 
   throw new Error('无法从响应中提取诗句');
@@ -75,8 +88,21 @@ function getOpenRouterModels(): string[] {
   return uniqueModels;
 }
 
-function extractOpenRouterText(data: any): string {
-  const choice = data?.choices?.[0];
+function extractOpenRouterText(data: unknown): string {
+  const responseData = data as {
+    choices?: Array<{
+      message?: {
+        content?: unknown;
+        reasoning?: unknown;
+      };
+      text?: unknown;
+      finish_reason?: unknown;
+      native_finish_reason?: unknown;
+    }>;
+    output_text?: unknown;
+    model?: unknown;
+  };
+  const choice = responseData?.choices?.[0];
   const message = choice?.message;
   const content = message?.content;
 
@@ -114,12 +140,12 @@ function extractOpenRouterText(data: any): string {
     return choice.text;
   }
 
-  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
-    return data.output_text;
+  if (typeof responseData?.output_text === 'string' && responseData.output_text.trim()) {
+    return responseData.output_text;
   }
 
   console.error('❌ OpenRouter 响应缺少文本内容:', JSON.stringify({
-    model: data?.model,
+    model: responseData?.model,
     choiceKeys: choice ? Object.keys(choice) : [],
     messageKeys: message ? Object.keys(message) : [],
     finishReason: choice?.finish_reason,
@@ -150,15 +176,16 @@ async function requestOpenRouterModel(fullPrompt: string, model: string): Promis
       messages: [
         {
           role: 'system',
-          content: 'You recommend existing poetry lines. Return exactly one JSON object and no extra text. Required keys: content, poem_title, author. If the title or author is uncertain, use "未知" or "佚名".',
+          content: 'Return JSON only. Recommend one real poem line with known title and author.',
         },
         {
           role: 'user',
           content: fullPrompt,
         },
       ],
-      temperature: 1.1,
-      max_tokens: 512,
+      temperature: 0.75,
+      top_p: 0.9,
+      max_tokens: 256,
     }),
   });
 
@@ -230,10 +257,11 @@ async function generateWithGemini(fullPrompt: string): Promise<PoemData> {
         parts: [{ text: fullPrompt }],
       }],
       generationConfig: {
-        temperature: 1.1,
+        temperature: 0.75,
         topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 512,
+        topP: 0.9,
+        maxOutputTokens: 256,
+        responseMimeType: 'application/json',
         thinkingConfig: {
           thinkingBudget: 0,
         },
@@ -283,108 +311,17 @@ export default async function handler(
   }
 
   try {
-    const { keyword, moodName, promptType } = req.body;
+    const { keyword, moodName } = req.body;
 
     if (!keyword || !moodName) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
 
-    console.log(`🎯 生成诗句 - 关键词: ${keyword}, 心情: ${moodName}, Prompt类型: ${promptType || '随机'}`);
+    const shouldMatchMood = Math.random() < 0.5;
 
-    // 添加随机元素
-    const randomSeed = Date.now();
-    const randomHints = ['多样性', '创新性', '惊喜感', '独特性', '新鲜感', '趣味性'];
-    const randomHint = randomHints[Math.floor(Math.random() * randomHints.length)];
+    console.log(`🎯 生成诗句 - 关键词: ${keyword}, 心情: ${moodName}, 模式: ${shouldMatchMood ? '情绪相关' : '情绪无关'}`);
 
-    // Prompt 模板（5个模板）
-    const promptTemplates = [
-      // 模板1：中文版（倾向中文诗句）
-      `你是一位精通中国诗词的推荐者。请根据"${moodName}"这个情绪，推荐一句诗句。
-
-[Request #${randomSeed}] 本次请注重${randomHint}，每次推荐不同的诗句。
-
-要求：
-1. 优先推荐中文诗句（古代诗词、现代诗、当代诗均可）
-2. 诗句要有意境，富有文学性
-3. 可以偶尔推荐英文诗句增加惊喜
-4. 请返回 JSON 格式：
-{
-  "content": "诗句内容",
-  "poem_title": "作品名称",
-  "author": "作者"
-}`,
-
-      // 模板2：英文版（倾向英文诗句）
-      `You are an expert poetry recommender. Recommend a line of poetry based on the mood: "${moodName}".
-
-[Request #${randomSeed}] Focus on ${randomHint}, recommend different poems each time.
-
-Requirements:
-1. Prefer English poetry (classical, modern, or contemporary)
-2. Can occasionally recommend Chinese poetry for surprise
-3. The verse should be poetic and literary
-4. Return JSON format:
-{
-  "content": "verse content",
-  "poem_title": "work title",
-  "author": "author name"
-}`,
-
-      // 模板3：现代诗版（倾向现代诗）
-      `你是现代诗歌的鉴赏家。请根据"${moodName}"这个情绪，推荐一句现代诗。
-
-[Request #${randomSeed}] 本次请注重${randomHint}。
-
-要求：
-1. 优先推荐20世纪至今的现代诗、当代诗
-2. 可以是中文或英文
-3. 诗句要有现代感、意象丰富
-4. 请返回 JSON 格式：
-{
-  "content": "诗句内容",
-  "poem_title": "作品名称",
-  "author": "作者"
-}`,
-
-      // 模板4：古典诗词版（倾向古代诗词）
-      `你是中国古典诗词专家。请根据"${moodName}"这个情绪，推荐一句古典诗词。
-
-[Request #${randomSeed}] 本次请注重${randomHint}。
-
-要求：
-1. 优先推荐唐诗、宋词、元曲等古典诗词
-2. 也可以推荐其他国家的古典诗歌
-3. 诗句要典雅、有韵味
-4. 请返回 JSON 格式：
-{
-  "content": "诗句内容",
-  "poem_title": "作品名称",
-  "author": "作者"
-}`,
-
-      // 模板5：混合版（完全随机）
-      `You are an expert poetry recommender. 请根据"${moodName}"推荐一句诗。
-
-[Request #${randomSeed}] 本次请求请注重${randomHint}，完全自由发挥。
-
-要求：
-1. 可以是任何语言、任何时代的诗句
-2. 可以是严肃的经典诗歌，也可以是轻松的网络文学
-3. 诗句与"${moodName}"的相关性可以很强，也可以完全无关（制造惊喜）
-4. 请返回 JSON 格式：
-{
-  "content": "诗句内容",
-  "poem_title": "作品名称",
-  "author": "作者"
-}`,
-    ];
-
-    // 随机选择一个 Prompt 模板
-    const promptTypeNames = ['中文版', '英文版', '现代诗版', '古典诗词版', '混合版'];
-    const selectedIndex = promptType !== undefined ? promptType : Math.floor(Math.random() * promptTemplates.length);
-    const fullPrompt = promptTemplates[selectedIndex];
-
-    console.log('🎲 随机选择的 Prompt 类型:', promptTypeNames[selectedIndex]);
+    const fullPrompt = buildPoemPrompt(moodName, shouldMatchMood);
 
     const providers = [
       {
