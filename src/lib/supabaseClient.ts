@@ -14,6 +14,7 @@ export interface Poem {
   poem_title?: string;
   author?: string;
   mood?: string;
+  like_count?: number;
   created_at?: string;
 }
 

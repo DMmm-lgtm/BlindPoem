@@ -47,6 +47,266 @@
   will-change: opacity, transform;
 }
 
+.favorites-trigger {
+  position: fixed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 35;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid rgba(255, 232, 173, 0.32);
+  border-radius: 999px;
+  background: rgba(5, 7, 22, 0.38);
+  color: rgba(255, 239, 195, 0.92);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 22px rgba(246, 215, 123, 0.14);
+  cursor: pointer;
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.favorites-trigger:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 232, 173, 0.72);
+  box-shadow: 0 0 30px rgba(246, 215, 123, 0.28);
+}
+
+.favorites-trigger svg {
+  display: block;
+  width: 1.55rem;
+  height: 1.55rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.favorites-trigger span {
+  position: absolute;
+  right: -0.2rem;
+  bottom: -0.15rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: rgba(246, 215, 123, 0.92);
+  color: #080916;
+  font-size: 0.7rem;
+  line-height: 1.15rem;
+  font-weight: 600;
+}
+
+.favorites-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.favorites-drawer {
+  width: min(26rem, 100vw);
+  height: 100%;
+  padding: 1.15rem;
+  border-left: 1px solid rgba(255, 232, 173, 0.2);
+  background:
+    linear-gradient(180deg, rgba(8, 11, 32, 0.94), rgba(9, 13, 30, 0.9)),
+    radial-gradient(circle at 26% 12%, rgba(246, 215, 123, 0.1), transparent 36%);
+  color: rgba(255, 247, 220, 0.94);
+  backdrop-filter: blur(18px);
+  box-shadow: -22px 0 48px rgba(0, 0, 0, 0.4);
+  overflow-y: auto;
+  animation: favoritesSlideIn 0.28s ease-out;
+}
+
+@keyframes favoritesSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.favorites-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.favorites-header p {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #ffe9a8;
+}
+
+.favorites-header span,
+.favorite-detail-footer span,
+.share-message {
+  color: rgba(255, 239, 195, 0.62);
+  font-size: 0.82rem;
+}
+
+.favorites-header button,
+.favorite-back,
+.favorite-detail-footer button {
+  border: 1px solid rgba(255, 232, 173, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 247, 220, 0.92);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.favorites-header button {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.favorites-list {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.favorites-empty,
+.share-placeholder {
+  display: grid;
+  min-height: 12rem;
+  place-items: center;
+  border: 1px dashed rgba(255, 232, 173, 0.22);
+  border-radius: 0.5rem;
+  color: rgba(255, 239, 195, 0.58);
+  text-align: center;
+}
+
+.favorite-row {
+  display: grid;
+  gap: 0.32rem;
+  width: 100%;
+  padding: 0.82rem 0.9rem;
+  border: 1px solid rgba(255, 232, 173, 0.16);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(255, 247, 220, 0.94);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.22s ease, border-color 0.22s ease;
+}
+
+.favorite-row:hover {
+  border-color: rgba(255, 232, 173, 0.36);
+  background: rgba(255, 255, 255, 0.085);
+}
+
+.favorite-row span,
+.favorite-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.favorite-row span {
+  font-size: 0.95rem;
+}
+
+.favorite-row small {
+  color: rgba(255, 239, 195, 0.58);
+  font-size: 0.74rem;
+}
+
+.favorite-detail {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.favorite-back {
+  justify-self: start;
+  padding: 0.45rem 0.72rem;
+}
+
+.favorite-poem {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgba(255, 232, 173, 0.13);
+}
+
+.favorite-poem p {
+  margin: 0;
+  font-family: QianTuBiFeng, serif;
+  font-size: 1.65rem;
+  line-height: 1.55;
+  color: #fff4cf;
+}
+
+.favorite-poem span {
+  color: rgba(255, 239, 195, 0.66);
+  font-size: 0.88rem;
+}
+
+.share-preview {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  border: 1px solid rgba(255, 232, 173, 0.18);
+}
+
+.share-placeholder {
+  aspect-ratio: 3 / 4;
+}
+
+.share-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.share-actions button {
+  min-height: 2.35rem;
+  border: 1px solid rgba(255, 232, 173, 0.2);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(255, 247, 220, 0.95);
+  cursor: pointer;
+  transition: background 0.22s ease, border-color 0.22s ease, opacity 0.22s ease;
+}
+
+.share-actions button:hover:not(:disabled),
+.favorite-detail-footer button:hover {
+  border-color: rgba(255, 232, 173, 0.42);
+  background: rgba(246, 215, 123, 0.13);
+}
+
+.share-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.favorite-detail-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.favorite-detail-footer button {
+  padding: 0.42rem 0.68rem;
+}
+
+.share-message {
+  margin: 0;
+}
+
 @keyframes poemReveal {
   0% {
     opacity: 0;
@@ -209,9 +469,30 @@
 
 /* 移动端适配 - 完整版（优化显示大小）*/
 @media (max-width: 768px) {
+  .favorites-trigger {
+    top: 0.85rem;
+    right: 0.85rem;
+    width: 2.65rem;
+    height: 2.65rem;
+    font-size: 1rem !important;
+  }
+
+  .favorites-drawer {
+    width: 100vw;
+    border-left: none;
+  }
+
+  .favorite-poem p {
+    font-size: 1.42rem;
+  }
+
   /* Emoji按钮 */
   button[title] {
     font-size: 2.75rem !important;
+  }
+
+  button.favorites-trigger {
+    font-size: 1rem !important;
   }
   
   /* 诗句展示框 */
@@ -249,9 +530,27 @@
 
 /* 超小屏幕（手机竖屏）- 优化显示大小 */
 @media (max-width: 480px) {
+  .favorites-trigger {
+    width: 2.45rem;
+    height: 2.45rem;
+    font-size: 1rem !important;
+  }
+
+  .favorites-drawer {
+    padding: 0.9rem;
+  }
+
+  .share-actions {
+    grid-template-columns: 1fr;
+  }
+
   /* Emoji按钮 */
   button[title] {
     font-size: 2.25rem !important;
+  }
+
+  button.favorites-trigger {
+    font-size: 1rem !important;
   }
   
   /* 诗句展示框 */

@@ -1,6 +1,20 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { generatePoem } from './lib/geminiClient';
-import { savePoemToDatabase, getRandomPoemFromDatabase } from './lib/poemService';
+import { generatePoem } from './lib/aiClient';
+import { savePoemToDatabase, getRandomPoemFromDatabase, incrementPoemLike } from './lib/poemService';
+import {
+  addFavorite,
+  getFavoriteId,
+  readFavorites,
+  removeFavorite,
+  updateFavoriteShareImage,
+} from './lib/favoriteService';
+import type { FavoritePoem } from './lib/favoriteService';
+import {
+  downloadShareImage,
+  generateShareImage,
+  getRemainingShareImageGenerations,
+  sharePoster,
+} from './lib/shareImageService';
 import './App.css';
 
 // 🎲 Fisher-Yates 洗牌算法 - 用于随机打乱数组
@@ -277,11 +291,16 @@ function App() {
   // 赞赏功能状态
   const [showLoveButton, setShowLoveButton] = useState(false);  // 控制爱心按钮显示
   const [isLoved, setIsLoved] = useState(false);                // 控制爱心是否被点击
-  const [showQRCode, setShowQRCode] = useState(false);          // 控制二维码显示
+  const [favorites, setFavorites] = useState<FavoritePoem[]>([]);
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState(false);
+  const [selectedFavoriteId, setSelectedFavoriteId] = useState<string | null>(null);
+  const [isGeneratingShareImage, setIsGeneratingShareImage] = useState(false);
+  const [shareMessage, setShareMessage] = useState('');
+  const [showQRCode, setShowQRCode] = useState(false);
   
   // 淡出动画状态
   const [isPoemFadingOut, setIsPoemFadingOut] = useState(false); // 诗句框淡出状态
-  const [isQRFadingOut, setIsQRFadingOut] = useState(false);     // 二维码淡出状态
+  const [isQRFadingOut, setIsQRFadingOut] = useState(false);
 
   type StarParticle = {
     id: string;
@@ -319,6 +338,16 @@ function App() {
     '沉浸在生活外',
     '生活在诗句里',
   ];
+
+  const currentFavoriteId = useMemo(() => (
+    poemData
+      ? getFavoriteId(poemData.content, poemData.poem_title, poemData.author)
+      : null
+  ), [poemData]);
+
+  const selectedFavorite = useMemo(() => (
+    favorites.find((favorite) => favorite.id === selectedFavoriteId) || null
+  ), [favorites, selectedFavoriteId]);
 
   // 每句诗的节奏长度：JS长度和去空格长度的平均值。
   const charCounts = welcomeLines.map((line) => {
@@ -496,23 +525,19 @@ function App() {
     } else {
       // 诗句关闭时，重置所有赞赏状态和动画状态
       setShowLoveButton(false);
-      setIsLoved(false);
       setShowQRCode(false);
       setIsPoemFadingOut(false);
       setIsQRFadingOut(false);
     }
   }, [poemData]);
 
-  // 二维码自动消失计时器：显示 30 秒后自动隐藏
   useEffect(() => {
-    if (showQRCode) {
-      const timer = setTimeout(() => {
-        setShowQRCode(false);
-      }, 30000); // 30 秒
+    setFavorites(readFavorites());
+  }, []);
 
-      return () => clearTimeout(timer);
-    }
-  }, [showQRCode]);
+  useEffect(() => {
+    setIsLoved(Boolean(currentFavoriteId && favorites.some((favorite) => favorite.id === currentFavoriteId)));
+  }, [currentFavoriteId, favorites]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1692,10 +1717,74 @@ function App() {
     };
   }, [emojisVisible, triggerMeteor]);
 
-  // 处理爱心点击
-  const handleLoveClick = () => {
+  // 处理爱心点击：喜欢即收藏，再次点击只取消本地收藏。
+  const handleLoveClick = async () => {
+    if (!poemData || !currentFavoriteId) return;
+
+    if (isLoved) {
+      const nextFavorites = removeFavorite(currentFavoriteId);
+      setFavorites(nextFavorites);
+      setIsLoved(false);
+      return;
+    }
+
+    const nextFavorites = addFavorite(poemData);
+    setFavorites(nextFavorites);
     setIsLoved(true);
     setShowQRCode(true);
+    setIsQRFadingOut(false);
+    await incrementPoemLike(poemData.content, poemData.poem_title, poemData.author);
+  };
+
+  const handleRemoveFavorite = (favoriteId: string) => {
+    const nextFavorites = removeFavorite(favoriteId);
+    setFavorites(nextFavorites);
+    if (selectedFavoriteId === favoriteId) {
+      setSelectedFavoriteId(null);
+    }
+  };
+
+  const handleGenerateShareImage = async () => {
+    if (!selectedFavorite) return;
+
+    if (selectedFavorite.shareImage) {
+      setShareMessage('这句诗已经有分享图了。');
+      return;
+    }
+
+    setIsGeneratingShareImage(true);
+    setShareMessage('');
+
+    try {
+      const image = await generateShareImage(selectedFavorite);
+      const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, image);
+      setFavorites(nextFavorites);
+      setShareMessage('分享图已生成。');
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : '分享图生成失败，请稍后再试。');
+    } finally {
+      setIsGeneratingShareImage(false);
+    }
+  };
+
+  const handleCopyShareText = async () => {
+    if (!selectedFavorite) return;
+
+    const text = `${selectedFavorite.content}\n《${selectedFavorite.poem_title}》— ${selectedFavorite.author}\nBlindPoem 盲盒诗`;
+    await navigator.clipboard?.writeText(text);
+    setShareMessage('诗句文案已复制。');
+  };
+
+  const handleDownloadShareImage = () => {
+    if (!selectedFavorite?.shareImage) return;
+    downloadShareImage(selectedFavorite.shareImage, selectedFavorite);
+  };
+
+  const handleSystemShare = async () => {
+    if (!selectedFavorite?.shareImage) return;
+
+    const shared = await sharePoster(selectedFavorite.shareImage, selectedFavorite);
+    setShareMessage(shared ? '已打开系统分享。' : '当前浏览器不支持直接分享，请先保存图片。');
   };
 
   const getNearestEmojiIndex = useCallback((x: number, y: number) => {
@@ -1734,17 +1823,18 @@ function App() {
   // 处理点击诗句框外部区域
   const handleOutsideClick = () => {
     if (showQRCode && !isQRFadingOut) {
-      // 如果二维码正在显示且未开始淡出，先淡出二维码
       setIsQRFadingOut(true);
       console.log('✅ 二维码开始淡出');
-      
-      // 0.5秒淡出动画完成后，真正关闭二维码
+
       setTimeout(() => {
         setShowQRCode(false);
         setIsQRFadingOut(false);
         console.log('✅ 二维码已关闭');
       }, 500);
-    } else if (!isPoemFadingOut) {
+      return;
+    }
+
+    if (!isPoemFadingOut) {
       // 如果二维码未显示或已关闭，淡出诗句框
       setIsPoemFadingOut(true);
       console.log('✅ 诗句框开始淡出');
@@ -1772,19 +1862,15 @@ function App() {
     
     // 如果有诗句正在显示，先淡出
     if (poemData && !isPoemFadingOut) {
-      // 如果二维码正在显示，先淡出二维码
       if (showQRCode && !isQRFadingOut) {
         console.log('✅ 检测到二维码，先淡出二维码...');
         setIsQRFadingOut(true);
-        
-        // 等待二维码淡出动画完成（0.5秒）
         await new Promise(resolve => setTimeout(resolve, 500));
-        
         setShowQRCode(false);
         setIsQRFadingOut(false);
         console.log('✅ 二维码已淡出');
       }
-      
+
       // 然后淡出诗句框
       console.log('✅ 开始淡出诗句框...');
       setIsPoemFadingOut(true);
@@ -1803,10 +1889,10 @@ function App() {
     setIsLoading(true);
 
     try {
-      console.log('📡 准备调用 Gemini API...');
-      // 调用 Gemini API
+      console.log('📡 准备调用诗句生成 API...');
+      // 调用服务端 AI API
       const poem = await generatePoem(keyword, mood);
-      console.log('✅ Gemini API 返回成功:', poem);
+      console.log('✅ 诗句生成 API 返回成功:', poem);
       
       // 展示诗句
       setPoemData({
@@ -2110,6 +2196,138 @@ function App() {
         }}
       />
 
+      <button
+        type="button"
+        className="favorites-trigger"
+        onClick={() => setIsFavoritesOpen(true)}
+        title="打开收藏夹"
+        aria-label="打开收藏夹"
+      >
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M10 5.5h12a2 2 0 0 1 2 2v18l-8-4.9-8 4.9v-18a2 2 0 0 1 2-2Z" />
+          <path d="M18.9 9.1 20 11.4l2.5.4-1.8 1.8.4 2.5-2.2-1.2-2.3 1.2.4-2.5-1.8-1.8 2.5-.4 1.2-2.3Z" />
+        </svg>
+        {favorites.length > 0 && <span>{favorites.length}</span>}
+      </button>
+
+      {isFavoritesOpen && (
+        <div
+          className="favorites-overlay"
+          onClick={() => {
+            setIsFavoritesOpen(false);
+            setSelectedFavoriteId(null);
+          }}
+        >
+          <aside className="favorites-drawer" onClick={(event) => event.stopPropagation()}>
+            <div className="favorites-header">
+              <div>
+                <p>收藏夹</p>
+                <span>{favorites.length} 句星光</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFavoritesOpen(false);
+                  setSelectedFavoriteId(null);
+                }}
+                aria-label="关闭收藏夹"
+              >
+                ×
+              </button>
+            </div>
+
+            {!selectedFavorite && (
+              <div className="favorites-list">
+                {favorites.length === 0 ? (
+                  <div className="favorites-empty">点亮爱心后，诗句会留在这里。</div>
+                ) : favorites.map((favorite) => (
+                  <button
+                    type="button"
+                    key={favorite.id}
+                    className="favorite-row"
+                    onClick={() => {
+                      setSelectedFavoriteId(favorite.id);
+                      setShareMessage('');
+                    }}
+                  >
+                    <span>{favorite.content}</span>
+                    <small>《{favorite.poem_title}》 · {favorite.author}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedFavorite && (
+              <div className="favorite-detail">
+                <button
+                  type="button"
+                  className="favorite-back"
+                  onClick={() => {
+                    setSelectedFavoriteId(null);
+                    setShareMessage('');
+                  }}
+                >
+                  ← 返回
+                </button>
+
+                <div className="favorite-poem">
+                  <p>{selectedFavorite.content}</p>
+                  <span>《{selectedFavorite.poem_title}》 · {selectedFavorite.author}</span>
+                </div>
+
+                {selectedFavorite.shareImage ? (
+                  <img
+                    src={selectedFavorite.shareImage}
+                    alt="诗句分享图"
+                    className="share-preview"
+                  />
+                ) : (
+                  <div className="share-placeholder">
+                    <span>尚未生成分享图</span>
+                  </div>
+                )}
+
+                <div className="share-actions">
+                  <button
+                    type="button"
+                    onClick={handleGenerateShareImage}
+                    disabled={isGeneratingShareImage || Boolean(selectedFavorite.shareImage)}
+                  >
+                    {isGeneratingShareImage ? '生成中...' : selectedFavorite.shareImage ? '已生成' : '生成分享图'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadShareImage}
+                    disabled={!selectedFavorite.shareImage}
+                  >
+                    保存 JPG
+                  </button>
+                  <button type="button" onClick={handleCopyShareText}>
+                    复制文案
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSystemShare}
+                    disabled={!selectedFavorite.shareImage}
+                  >
+                    分享
+                  </button>
+                </div>
+
+                <div className="favorite-detail-footer">
+                  <span>今日还可生成 {getRemainingShareImageGenerations()} 张</span>
+                  <button type="button" onClick={() => handleRemoveFavorite(selectedFavorite.id)}>
+                    移出收藏
+                  </button>
+                </div>
+
+                {shareMessage && <p className="share-message">{shareMessage}</p>}
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
       {/* Emoji 按钮区域 - 淡入后物理运动 */}
       <div 
         className="emoji-container" 
@@ -2283,7 +2501,7 @@ function App() {
                       overflow: 'hidden',
                     }}
                   >
-                    喜欢就点个赞吧！
+                    喜欢就收藏吧！
                   </span>
                   
                   {/* 爱心按钮 */}
@@ -2301,7 +2519,7 @@ function App() {
                       padding: 0,
                       cursor: 'pointer',
                     }}
-                    title={isLoved ? '感谢支持！' : '喜欢这首诗？'}
+                    title={isLoved ? '已收藏，再点取消' : '喜欢并收藏这首诗'}
                   >
                     {isLoved ? '❤️' : '🤍'}
                   </button>
@@ -2310,18 +2528,17 @@ function App() {
               </div>
             </div>
           </div>
-          
-          {/* 赞赏二维码 - 点击爱心后显示，在诗句框下方 */}
+
           {showQRCode && (
             <div
-              className="absolute pointer-events-auto"
+              className="absolute pointer-events-auto reward-qrcode"
               style={{
                 top: '60%',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 marginTop: '2rem',
-                animation: isQRFadingOut 
-                  ? 'qrCodeFadeOut 0.5s ease-out forwards' 
+                animation: isQRFadingOut
+                  ? 'qrCodeFadeOut 0.5s ease-out forwards'
                   : 'qrCodeFadeIn 0.5s ease-out forwards',
               }}
               onClick={(e) => e.stopPropagation()}

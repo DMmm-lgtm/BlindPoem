@@ -6,8 +6,12 @@ create table if not exists public.poems (
   poem_title text,
   author text,
   mood text,
+  like_count integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+alter table public.poems
+add column if not exists like_count integer not null default 0;
 
 create unique index if not exists poems_content_key on public.poems (content);
 create index if not exists poems_created_at_idx on public.poems (created_at desc);
@@ -34,3 +38,23 @@ with check (
   and (author is null or length(author) <= 120)
   and (mood is null or length(mood) <= 120)
 );
+
+create or replace function public.increment_poem_like(poem_content text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  next_like_count integer;
+begin
+  update public.poems
+  set like_count = like_count + 1
+  where content = poem_content
+  returning like_count into next_like_count;
+
+  return next_like_count;
+end;
+$$;
+
+grant execute on function public.increment_poem_like(text) to anon;

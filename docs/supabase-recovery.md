@@ -78,11 +78,12 @@ OpenRouter is the preferred AI provider. Add these Vercel environment variables:
 ```bash
 OPENROUTER_API_KEY=your-openrouter-key
 OPENROUTER_MODEL=openrouter/free
+OPENROUTER_IMAGE_MODEL=optional-free-image-model
 OPENROUTER_SITE_URL=https://your-site.vercel.app
 OPENROUTER_APP_NAME=BlindPoem
 ```
 
-`OPENROUTER_MODEL` can be changed later if you want to test a specific model. Use `openrouter/free` for zero-cost testing, or a comma-separated list such as `openrouter/auto,openrouter/free` if you have OpenRouter credits and still want a free fallback. If `GEMINI_API_KEY` is still configured, the API will use Gemini as a fallback when OpenRouter fails.
+`OPENROUTER_MODEL` can be changed later if you want to test a specific text model. Use `openrouter/free` for zero-cost testing. `OPENROUTER_IMAGE_MODEL` is optional; when it is not set, the share-image API asks OpenRouter for currently available free image models and tries those only. Gemini is intentionally not used.
 
 ## Fallback behavior
 

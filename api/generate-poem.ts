@@ -238,63 +238,8 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
   throw new Error('所有 OpenRouter 模型都不可用');
 }
 
-async function generateWithGemini(fullPrompt: string): Promise<PoemData> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-
-  if (!apiKey) {
-    throw new Error('Missing GEMINI_API_KEY');
-  }
-
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{ text: fullPrompt }],
-      }],
-      generationConfig: {
-        temperature: 0.75,
-        topK: 40,
-        topP: 0.9,
-        maxOutputTokens: 256,
-        responseMimeType: 'application/json',
-        thinkingConfig: {
-          thinkingBudget: 0,
-        },
-      },
-    }),
-  });
-
-  console.log('📥 收到 Gemini 响应，状态码:', response.status);
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('❌ Gemini API 错误:', errorText);
-    throw new Error(`Gemini API Error: ${response.status}`);
-  }
-
-  const data = await response.json();
-
-  if (data.usageMetadata) {
-    console.log('💰 Gemini Token 使用情况:');
-    console.log('  - 输入 Token:', data.usageMetadata.promptTokenCount);
-    console.log('  - 输出 Token:', data.usageMetadata.candidatesTokenCount);
-    console.log('  - 总计 Token:', data.usageMetadata.totalTokenCount);
-  }
-
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!text) {
-    throw new Error('无法解析 Gemini 响应');
-  }
-
-  console.log('📄 Gemini 原始文本:', text);
-  return parsePoemJson(text);
-}
+// Gemini direct provider is intentionally disabled.
+// The site currently uses OpenRouter only, so it does not depend on GEMINI_API_KEY.
 
 export default async function handler(
   req: VercelRequest,
@@ -305,9 +250,9 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     console.error('❌ 缺少 AI API Key 环境变量');
-    return res.status(500).json({ error: 'Missing API Key configuration' });
+    return res.status(500).json({ error: 'Missing OPENROUTER_API_KEY configuration' });
   }
 
   try {
@@ -328,11 +273,6 @@ export default async function handler(
         name: 'OpenRouter',
         enabled: Boolean(process.env.OPENROUTER_API_KEY),
         generate: generateWithOpenRouter,
-      },
-      {
-        name: 'Gemini',
-        enabled: Boolean(process.env.GEMINI_API_KEY),
-        generate: generateWithGemini,
       },
     ];
 

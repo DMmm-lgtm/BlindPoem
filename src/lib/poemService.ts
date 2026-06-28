@@ -178,6 +178,35 @@ export async function savePoemToDatabase(
   }
 }
 
+export async function incrementPoemLike(
+  content: string,
+  poem_title: string,
+  author: string
+): Promise<number | null> {
+  if (!isSupabaseConfigured || !supabase) {
+    console.info('ℹ️ 未配置 Supabase，本次喜欢只保存在浏览器收藏夹');
+    return null;
+  }
+
+  try {
+    await savePoemToDatabase(content, poem_title, author, 'favorite');
+
+    const { data, error } = await supabase.rpc('increment_poem_like', {
+      poem_content: content,
+    });
+
+    if (error) {
+      console.error('❌ 点赞计数更新失败：', error);
+      return null;
+    }
+
+    return typeof data === 'number' ? data : null;
+  } catch (error) {
+    console.error('❌ incrementPoemLike 错误：', error);
+    return null;
+  }
+}
+
 /**
  * 从 Supabase 随机读取一条诗句（容错机制）
  */
