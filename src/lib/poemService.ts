@@ -217,11 +217,26 @@ export async function getRandomPoemFromDatabase(): Promise<Poem | null> {
   }
 
   try {
-    // 先取 10 条，然后在客户端随机选一条（简单有效）
+    const { count, error: countError } = await supabase
+      .from('poems')
+      .select('id', { count: 'exact', head: true });
+
+    if (countError) {
+      console.error('❌ 查询 Supabase 诗句数量失败：', countError);
+      return getLocalFallbackPoem();
+    }
+
+    if (!count || count <= 0) {
+      console.warn('⚠️ 数据库中还没有诗句');
+      return getLocalFallbackPoem();
+    }
+
+    const randomOffset = Math.floor(Math.random() * count);
     const { data, error } = await supabase
       .from('poems')
       .select('*')
-      .limit(10);
+      .range(randomOffset, randomOffset)
+      .limit(1);
 
     if (error) {
       console.error('❌ 从 Supabase 读取失败：', error);
@@ -233,9 +248,7 @@ export async function getRandomPoemFromDatabase(): Promise<Poem | null> {
       return getLocalFallbackPoem();
     }
 
-    // 客户端随机选择
-    const randomIndex = Math.floor(Math.random() * data.length);
-    const randomPoem = data[randomIndex];
+    const randomPoem = data[0];
 
     console.log('✅ 从数据库读取到随机诗句：', randomPoem.content);
     return randomPoem;

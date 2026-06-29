@@ -30,7 +30,9 @@ function buildPoemPrompt(moodName: string, shouldMatchMood: boolean): string {
     : `不要按情绪选诗；随机选一首好诗中的一句`;
 
   return `${mode}
-真实诗句。必须有明确作者和篇名，不能佚名/未知。中英古今均可。
+真实诗句。必须有明确作者和篇名，不能佚名/未知。优先中文诗句；英文诗句也可以，但必须是一句完整短诗句。
+不要返回被截断的半句；英文不能以连字符、破折号、省略号或未闭合标点结尾。
+诗句内容尽量不超过80个字符。
 返回JSON：{"content":"","poem_title":"","author":""}`;
 }
 
@@ -48,6 +50,10 @@ function validatePoemData(poemData: PoemData): PoemData {
 
   if (/^(未知|佚名|无)$/i.test(content) || content.length < 2) {
     throw new Error('诗句内容无效');
+  }
+
+  if (/[—\-–,，;；:："'“‘(（[]$/.test(content) || /\.{2,}$|…$/.test(content)) {
+    throw new Error('诗句疑似被截断');
   }
 
   if (/^(未知|佚名|无|anonymous|unknown)$/i.test(poemTitle)) {

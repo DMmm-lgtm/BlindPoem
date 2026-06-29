@@ -106,6 +106,50 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
   return lines.slice(0, 6);
 }
 
+function wrapEnglishText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+    if (context.measureText(nextLine).width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = nextLine;
+    }
+  });
+
+  if (currentLine) lines.push(currentLine);
+  return lines;
+}
+
+function fitEnglishLines(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+  startSize: number,
+  minSize: number
+): { fontSize: number; lines: string[]; lineHeight: number } {
+  for (let fontSize = startSize; fontSize >= minSize; fontSize -= 2) {
+    context.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    const lines = wrapEnglishText(context, text, maxWidth);
+    const tooWide = lines.some((line) => context.measureText(line).width > maxWidth);
+    if (lines.length <= maxLines && !tooWide) {
+      return { fontSize, lines, lineHeight: Math.round(fontSize * 1.28) };
+    }
+  }
+
+  context.font = `${minSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  return {
+    fontSize: minSize,
+    lines: wrapEnglishText(context, text, maxWidth).slice(0, maxLines),
+    lineHeight: Math.round(minSize * 1.28),
+  };
+}
+
 function drawSoftOrb(
   context: CanvasRenderingContext2D,
   x: number,
@@ -169,6 +213,37 @@ function drawVerticalText(
   });
 }
 
+function drawEnglishPosterText(
+  context: CanvasRenderingContext2D,
+  poem: FavoritePoem,
+  style: PosterStyle,
+  layout: string
+) {
+  const isRight = layout === 'bottom-right-small';
+  const maxWidth = isRight ? 620 : 720;
+  const x = isRight ? POSTER_WIDTH - 92 : 92;
+  const y = isRight ? 900 : 880;
+
+  context.textAlign = isRight ? 'right' : 'left';
+  context.fillStyle = style.text;
+
+  const fitted = fitEnglishLines(context, poem.content, maxWidth, 4, isRight ? 44 : 54, 30);
+  context.font = `${fitted.fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  fitted.lines.forEach((line, index) => {
+    context.fillText(line, x, y + index * fitted.lineHeight);
+  });
+
+  context.shadowBlur = 0;
+  context.fillStyle = style.accent;
+  context.font = '26px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  const metaText = `《${poem.poem_title}》 — ${poem.author}`;
+  const metaLines = wrapEnglishText(context, metaText, maxWidth);
+  const metaY = y + fitted.lines.length * fitted.lineHeight + 38;
+  metaLines.slice(0, 2).forEach((line, index) => {
+    context.fillText(line, x, metaY + index * 34);
+  });
+}
+
 function drawPosterText(
   context: CanvasRenderingContext2D,
   poem: FavoritePoem,
@@ -186,7 +261,9 @@ function drawPosterText(
   context.shadowColor = 'rgba(0, 0, 0, 0.58)';
   context.shadowBlur = 18;
 
-  if (layout === 'upper-left-vertical') {
+  if (isEnglishPoem(poem.content)) {
+    drawEnglishPosterText(context, poem, style, layout);
+  } else if (layout === 'upper-left-vertical') {
     context.textAlign = 'center';
     context.font = '48px QianTuBiFeng, serif';
     drawVerticalText(context, poem.content, 150, 190, 62, 18);
