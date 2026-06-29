@@ -20,10 +20,12 @@ const DEFAULT_CLOUDFLARE_IMAGE_MODEL = '@cf/black-forest-labs/flux-1-schnell';
 function buildImagePrompt(content: string, poemTitle: string, author: string): string {
   return [
     'A refined poetic image inspired by this poem line.',
-    'No text, no watermark, no typography. Leave natural negative space for a poem overlay.',
+    'ABSOLUTELY NO text, no letters, no words, no captions, no calligraphy, no typography, no watermark, no logo, no signature.',
+    'Leave natural negative space for a poem overlay that will be added later.',
     'The image should be beautiful first: atmospheric, cinematic, elegant, emotionally faithful.',
     'Avoid busy compositions. Prefer one strong visual subject, subtle depth, and graceful lighting.',
-    'It should fit a deep-space poetry website, but the poem imagery is more important than literal stars.',
+    'Do not force a space, galaxy, nebula, or starry-sky theme unless the poem itself clearly asks for it.',
+    'Match the poem imagery and mood directly.',
     `Poem line: ${content}`,
     `Title: ${poemTitle}`,
     `Author: ${author}`,

@@ -150,6 +150,12 @@ function splitPoemChars(text: string): string[] {
   return [...text.replace(/\s+/g, '')].filter(Boolean);
 }
 
+function isEnglishPoem(text: string): boolean {
+  const latinChars = text.match(/[A-Za-z]/g)?.length || 0;
+  const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length || 0;
+  return latinChars > 0 && latinChars >= cjkChars * 2;
+}
+
 function drawVerticalText(
   context: CanvasRenderingContext2D,
   text: string,
@@ -168,8 +174,11 @@ function drawPosterText(
   poem: FavoritePoem,
   style: PosterStyle
 ) {
-  const layout = ['bottom-left', 'upper-left-vertical', 'right-vertical', 'bottom-right-small'][
-    Math.floor(Math.random() * 4)
+  const layouts = isEnglishPoem(poem.content)
+    ? ['bottom-left', 'bottom-right-small']
+    : ['bottom-left', 'upper-left-vertical', 'right-vertical', 'bottom-right-small'];
+  const layout = layouts[
+    Math.floor(Math.random() * layouts.length)
   ];
 
   context.save();
@@ -267,26 +276,26 @@ export async function generateShareImage(poem: FavoritePoem): Promise<string> {
 
     drawSoftOrb(context, 240, 230, 360, style.mist);
     drawSoftOrb(context, 900, 1040, 420, style.mist);
-  }
 
-  for (let index = 0; index < 190; index += 1) {
-    const x = Math.random() * POSTER_WIDTH;
-    const y = Math.random() * POSTER_HEIGHT;
-    const opacity = 0.18 + Math.random() * 0.62;
-    const size = 0.8 + Math.random() * 2.6;
-    context.fillStyle = `rgba(255, 244, 204, ${opacity})`;
+    for (let index = 0; index < 190; index += 1) {
+      const x = Math.random() * POSTER_WIDTH;
+      const y = Math.random() * POSTER_HEIGHT;
+      const opacity = 0.18 + Math.random() * 0.62;
+      const size = 0.8 + Math.random() * 2.6;
+      context.fillStyle = `rgba(255, 244, 204, ${opacity})`;
+      context.beginPath();
+      context.arc(x, y, size, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    context.strokeStyle = 'rgba(255, 240, 190, 0.36)';
+    context.lineWidth = 2;
     context.beginPath();
-    context.arc(x, y, size, 0, Math.PI * 2);
-    context.fill();
+    context.arc(POSTER_WIDTH * 0.5, 520, 280, Math.PI * 0.08, Math.PI * 1.02);
+    context.stroke();
   }
 
-  context.strokeStyle = 'rgba(255, 240, 190, 0.36)';
-  context.lineWidth = 2;
-  context.beginPath();
-  context.arc(POSTER_WIDTH * 0.5, 520, 280, Math.PI * 0.08, Math.PI * 1.02);
-  context.stroke();
-
-  context.fillStyle = 'rgba(0, 0, 0, 0.22)';
+  context.fillStyle = aiBackground ? 'rgba(0, 0, 0, 0.16)' : 'rgba(0, 0, 0, 0.22)';
   context.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
 
   drawPosterText(context, poem, style);
@@ -295,8 +304,6 @@ export async function generateShareImage(poem: FavoritePoem): Promise<string> {
   context.font = '24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   context.textAlign = 'right';
   context.fillText('BlindPoem 盲盒诗', POSTER_WIDTH - 72, POSTER_HEIGHT - 68);
-  context.textAlign = 'left';
-  context.fillText(style.name, 72, POSTER_HEIGHT - 68);
 
   return canvas.toDataURL('image/jpeg', 0.92);
 }

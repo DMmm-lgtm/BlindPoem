@@ -20,7 +20,9 @@ const OPENROUTER_FREE_TEXT_MODELS = [
   'openrouter/free',
 ];
 const OPENROUTER_MODEL_TIMEOUT_MS = 8000;
-const OPENROUTER_MAX_MODEL_ATTEMPTS = 3;
+const OPENROUTER_MAX_MODEL_ATTEMPTS = 2;
+const DEEPSEEK_TIMEOUT_MS = 12000;
+const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
 
 function buildPoemPrompt(moodName: string, shouldMatchMood: boolean): string {
   const mode = shouldMatchMood
@@ -160,6 +162,43 @@ function extractOpenRouterText(data: unknown): string {
   throw new Error('无法解析 OpenRouter 响应');
 }
 
+function extractChatCompletionText(data: unknown, providerName: string): string {
+  const responseData = data as {
+    choices?: Array<{
+      message?: {
+        content?: unknown;
+      };
+      text?: unknown;
+    }>;
+  };
+  const choice = responseData?.choices?.[0];
+  const content = choice?.message?.content;
+
+  if (typeof content === 'string' && content.trim()) {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (typeof part?.text === 'string') return part.text;
+        if (typeof part?.content === 'string') return part.content;
+        return '';
+      })
+      .join('\n')
+      .trim();
+
+    if (text) return text;
+  }
+
+  if (typeof choice?.text === 'string' && choice.text.trim()) {
+    return choice.text;
+  }
+
+  throw new Error(`无法解析 ${providerName} 响应`);
+}
+
 async function requestOpenRouterModel(fullPrompt: string, model: string): Promise<PoemData> {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -261,6 +300,71 @@ async function generateWithOpenRouter(fullPrompt: string): Promise<PoemData> {
   throw new Error(`所有 OpenRouter 模型都不可用（已尝试 ${models.length} 个）`);
 }
 
+async function generateWithDeepSeek(fullPrompt: string): Promise<PoemData> {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const model = process.env.DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL;
+
+  if (!apiKey) {
+    throw new Error('Missing DEEPSEEK_API_KEY');
+  }
+
+  console.log(`🤖 DeepSeek 尝试模型: ${model}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DEEPSEEK_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'Return JSON only. Recommend one real poem line with known title and author. If uncertain, still return the best verified-looking JSON without commentary.',
+          },
+          {
+            role: 'user',
+            content: fullPrompt,
+          },
+        ],
+        temperature: 0.55,
+        top_p: 0.85,
+        max_tokens: 256,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`DeepSeek timeout after ${DEEPSEEK_TIMEOUT_MS / 1000}s`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  console.log('📥 收到 DeepSeek 响应，状态码:', response.status);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ DeepSeek API 错误 (${model}):`, errorText);
+    throw new Error(`DeepSeek API Error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = extractChatCompletionText(data, 'DeepSeek');
+
+  console.log('📄 DeepSeek 原始文本:', text);
+  return parsePoemJson(text);
+}
+
 // Gemini direct provider is intentionally disabled.
 // The site currently uses OpenRouter only, so it does not depend on GEMINI_API_KEY.
 
@@ -273,9 +377,9 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!process.env.OPENROUTER_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY && !process.env.DEEPSEEK_API_KEY) {
     console.error('❌ 缺少 AI API Key 环境变量');
-    return res.status(500).json({ error: 'Missing OPENROUTER_API_KEY configuration' });
+    return res.status(500).json({ error: 'Missing OPENROUTER_API_KEY or DEEPSEEK_API_KEY configuration' });
   }
 
   try {
@@ -296,6 +400,11 @@ export default async function handler(
         name: 'OpenRouter',
         enabled: Boolean(process.env.OPENROUTER_API_KEY),
         generate: generateWithOpenRouter,
+      },
+      {
+        name: 'DeepSeek',
+        enabled: Boolean(process.env.DEEPSEEK_API_KEY),
+        generate: generateWithDeepSeek,
       },
     ];
 

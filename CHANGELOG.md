@@ -18,6 +18,7 @@
 - Share posters now use varied horizontal/vertical text layouts so the image remains the visual focus.
 - Direct Gemini usage was disabled. Poem generation now uses OpenRouter only, and image generation uses Cloudflare AI.
 - The default Cloudflare AI image model is `@cf/black-forest-labs/flux-1-schnell`.
+- Poem generation now tries at most two OpenRouter models before falling back to DeepSeek when configured.
 - Renamed the frontend AI client from `geminiClient` to `aiClient`.
 
 ### Notes

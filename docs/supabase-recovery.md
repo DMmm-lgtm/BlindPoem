@@ -80,12 +80,14 @@ OPENROUTER_API_KEY=your-openrouter-key
 OPENROUTER_MODEL=openrouter/free
 OPENROUTER_SITE_URL=https://your-site.vercel.app
 OPENROUTER_APP_NAME=BlindPoem
+DEEPSEEK_API_KEY=your-deepseek-key
+DEEPSEEK_MODEL=deepseek-v4-flash
 CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
 CLOUDFLARE_API_TOKEN=your-cloudflare-workers-ai-token
 CLOUDFLARE_AI_IMAGE_MODEL=@cf/black-forest-labs/flux-1-schnell
 ```
 
-`OPENROUTER_MODEL` can be changed later if you want to test a specific text model. Use `openrouter/free` for zero-cost testing. Share-image generation uses Cloudflare AI; `CLOUDFLARE_AI_IMAGE_MODEL` is optional and defaults to `@cf/black-forest-labs/flux-1-schnell`. Gemini is intentionally not used.
+`OPENROUTER_MODEL` can be changed later if you want to test a specific text model. Use `openrouter/free` for zero-cost testing. Poem generation tries up to two OpenRouter models first, then uses DeepSeek as a fallback when `DEEPSEEK_API_KEY` is configured. Share-image generation uses Cloudflare AI; `CLOUDFLARE_AI_IMAGE_MODEL` is optional and defaults to `@cf/black-forest-labs/flux-1-schnell`. Gemini is intentionally not used.
 
 ## Fallback behavior
 
