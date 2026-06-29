@@ -13,6 +13,7 @@ import {
   downloadShareImage,
   generateShareImage,
   getRemainingShareImageGenerations,
+  isShareImageGenerationLimitBypassed,
   sharePoster,
 } from './lib/shareImageService';
 import './App.css';
@@ -166,6 +167,19 @@ const CURTAIN_BEZIER = {
   y2: 1,
 };
 
+type EmojiMood = (typeof EMOJI_MOODS)[number];
+
+type DisplayEmoji = EmojiMood & {
+  slotId: number;
+  version: number;
+};
+
+type EmojiClickRecord = {
+  slotId: number;
+  version: number;
+  keyword: string;
+};
+
 function App() {
   // 📱 移动设备检测：桌面浏览器即使窗口较窄，也保留完整动效。
   const getIsTouchDevice = () =>
@@ -201,7 +215,7 @@ function App() {
   const promptFontSize = isSmallMobile ? '1.75rem' : isMobile ? '2.2rem' : '2.5rem';
 
   // 🎲 每次刷新从 100 个中随机选择 Emoji（保持情绪平衡，移动端性能优化）
-  const selectedEmojis = useMemo(() => {
+  const initialEmojiSelection = useMemo<DisplayEmoji[]>(() => {
     // 分类 Emoji（按在数组中的位置）
     const positive = EMOJI_MOODS.slice(0, 35);   // 正面情绪 35个
     const neutral = EMOJI_MOODS.slice(35, 55);   // 平静情绪 20个
@@ -257,8 +271,26 @@ function App() {
       final.map(e => `${e.emoji} ${e.mood}`).join(', ')
     );
     
-    return final;
+    return final.map((emojiMood, index) => ({
+      ...emojiMood,
+      slotId: index,
+      version: 0,
+    }));
   }, [isSmallMobile, isMobile, isTouchDevice, viewportSize]); // 依赖设备类型和屏幕面积 - 设备类型变化时重新计算
+
+  const [selectedEmojis, setSelectedEmojis] = useState<DisplayEmoji[]>(initialEmojiSelection);
+  const emojiClickHistoryRef = useRef<EmojiClickRecord[]>([]);
+  const emojiReplacementTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setSelectedEmojis(initialEmojiSelection);
+    emojiClickHistoryRef.current = [];
+
+    if (emojiReplacementTimerRef.current) {
+      clearTimeout(emojiReplacementTimerRef.current);
+      emojiReplacementTimerRef.current = null;
+    }
+  }, [initialEmojiSelection]);
 
   // 入场动画状态
   const [welcomePhase, setWelcomePhase] = useState<'lines' | 'sliding' | 'complete'>('lines');
@@ -1099,33 +1131,35 @@ function App() {
       '255, 100, 200',   // 粉色
       '100, 255, 255',   // 青色
     ];
-    return selectedEmojis.map(() => colors[Math.floor(Math.random() * colors.length)]);
-  }, [selectedEmojis]);
+    return Array.from({ length: selectedEmojis.length }, () => (
+      colors[Math.floor(Math.random() * colors.length)]
+    ));
+  }, [selectedEmojis.length]);
 
   // Emoji辉光周期（15-33秒）
   const emojiGlowDurations = useMemo(() => {
-    return selectedEmojis.map(() => 15 + Math.random() * 18);
-  }, [selectedEmojis]);
+    return Array.from({ length: selectedEmojis.length }, () => 15 + Math.random() * 18);
+  }, [selectedEmojis.length]);
 
   // Emoji辉光大小范围（每个emoji不同）
   const emojiGlowSizes = useMemo(() => {
-    return selectedEmojis.map(() => ({
+    return Array.from({ length: selectedEmojis.length }, () => ({
       minSize: 10 + Math.random() * 8,      // 最小光辉：10-18px
       maxSize: 20 + Math.random() * 12,     // 最大光辉：20-32px
       minOpacity: 0.3 + Math.random() * 0.2, // 最小不透明度：0.3-0.5
       maxOpacity: 0.5 + Math.random() * 0.3, // 最大不透明度：0.5-0.8
     }));
-  }, [selectedEmojis]);
+  }, [selectedEmojis.length]);
 
   const emojiAnimations = useMemo(() => {
-    return selectedEmojis.map((_, index) => {
+    return Array.from({ length: selectedEmojis.length }, (_, index) => {
       if (isTouchDevice) {
         return `emojiSimpleFadeIn ${isSkipped ? '1.2s' : '1.8s'} ease-out forwards`;
       }
 
       return `emojiSimpleFadeIn ${isSkipped ? '2s' : '3s'} ease-out forwards, emojiGlow-${index} ${emojiGlowDurations[index]}s ease-in-out ${isSkipped ? '2s' : '3s'} infinite`;
     });
-  }, [emojiGlowDurations, isSkipped, isTouchDevice, selectedEmojis]);
+  }, [emojiGlowDurations, isSkipped, isTouchDevice, selectedEmojis.length]);
 
   // Emoji物理系统
   interface EmojiPhysics {
@@ -1851,11 +1885,95 @@ function App() {
     }
   };
 
+  const replaceOldestClickedEmoji = useCallback(() => {
+    setSelectedEmojis((currentEmojis) => {
+      if (emojiClickHistoryRef.current.length <= currentEmojis.length / 3) {
+        return currentEmojis;
+      }
+
+      let targetIndex = -1;
+
+      while (emojiClickHistoryRef.current.length > 0) {
+        const oldestClick = emojiClickHistoryRef.current.shift();
+        if (!oldestClick) break;
+
+        const emojiIndex = currentEmojis.findIndex(
+          (item) => item.slotId === oldestClick.slotId
+        );
+        const currentEmoji = emojiIndex >= 0 ? currentEmojis[emojiIndex] : null;
+
+        if (
+          currentEmoji &&
+          currentEmoji.version === oldestClick.version &&
+          currentEmoji.keyword === oldestClick.keyword
+        ) {
+          targetIndex = emojiIndex;
+          break;
+        }
+      }
+
+      if (targetIndex < 0) {
+        return currentEmojis;
+      }
+
+      const currentKeywords = new Set(currentEmojis.map((item) => item.keyword));
+      const currentEmoji = currentEmojis[targetIndex];
+      const freshEmojiPool = EMOJI_MOODS.filter((item) => !currentKeywords.has(item.keyword));
+      const fallbackEmojiPool = EMOJI_MOODS.filter((item) => item.keyword !== currentEmoji.keyword);
+      const nextEmojiPool = freshEmojiPool.length > 0 ? freshEmojiPool : fallbackEmojiPool;
+      const nextEmojiMood = nextEmojiPool[Math.floor(Math.random() * nextEmojiPool.length)];
+
+      if (!nextEmojiMood) {
+        return currentEmojis;
+      }
+
+      const nextEmojis = [...currentEmojis];
+      nextEmojis[targetIndex] = {
+        ...nextEmojiMood,
+        slotId: currentEmoji.slotId,
+        version: currentEmoji.version + 1,
+      };
+
+      console.log('🫥 静默替换 Emoji:', {
+        from: `${currentEmoji.emoji} ${currentEmoji.mood}`,
+        to: `${nextEmojiMood.emoji} ${nextEmojiMood.mood}`,
+      });
+
+      return nextEmojis;
+    });
+  }, []);
+
+  const scheduleEmojiReplacementAfterPoemAppears = useCallback(() => {
+    if (emojiReplacementTimerRef.current) {
+      clearTimeout(emojiReplacementTimerRef.current);
+    }
+
+    emojiReplacementTimerRef.current = window.setTimeout(() => {
+      replaceOldestClickedEmoji();
+      emojiReplacementTimerRef.current = null;
+    }, 450 + Math.random() * 350);
+  }, [replaceOldestClickedEmoji]);
+
+  useEffect(() => {
+    return () => {
+      if (emojiReplacementTimerRef.current) {
+        clearTimeout(emojiReplacementTimerRef.current);
+      }
+    };
+  }, []);
+
   // AI 调用核心逻辑
-  const handleEmojiClick = async (keyword: string, mood: string) => {
+  const handleEmojiClick = async (item: DisplayEmoji) => {
     if (isRequestInFlightRef.current) return;
     isRequestInFlightRef.current = true;
 
+    emojiClickHistoryRef.current.push({
+      slotId: item.slotId,
+      version: item.version,
+      keyword: item.keyword,
+    });
+
+    const { keyword, mood } = item;
     console.log('🎭 点击了 Emoji:', { keyword, mood });
     triggerMeteor();
     setShowPrompt(false); // 隐藏提示词
@@ -1900,6 +2018,7 @@ function App() {
         poem_title: poem.poem_title,
         author: poem.author,
       });
+      scheduleEmojiReplacementAfterPoemAppears();
 
       // 异步保存到数据库（不阻塞 UI）
       savePoemToDatabase(
@@ -1924,6 +2043,7 @@ function App() {
           poem_title: fallbackPoem.poem_title || '未知',
           author: fallbackPoem.author || '佚名',
         });
+        scheduleEmojiReplacementAfterPoemAppears();
         console.log('✅ 使用数据库备用诗句');
       } else {
         alert('获取诗句失败，且数据库中暂无备用诗句。请稍后重试。');
@@ -2259,16 +2379,25 @@ function App() {
 
             {selectedFavorite && (
               <div className="favorite-detail">
-                <button
-                  type="button"
-                  className="favorite-back"
-                  onClick={() => {
-                    setSelectedFavoriteId(null);
-                    setShareMessage('');
-                  }}
-                >
-                  ← 返回
-                </button>
+                <div className="favorite-detail-nav">
+                  <button
+                    type="button"
+                    className="favorite-back"
+                    onClick={() => {
+                      setSelectedFavoriteId(null);
+                      setShareMessage('');
+                    }}
+                  >
+                    ← 返回
+                  </button>
+                  <button
+                    type="button"
+                    className="favorite-remove"
+                    onClick={() => handleRemoveFavorite(selectedFavorite.id)}
+                  >
+                    移出收藏
+                  </button>
+                </div>
 
                 <div className="favorite-poem">
                   <p>{selectedFavorite.content}</p>
@@ -2315,13 +2444,21 @@ function App() {
                 </div>
 
                 <div className="favorite-detail-footer">
-                  <span>今日还可生成 {getRemainingShareImageGenerations()} 张</span>
-                  <button type="button" onClick={() => handleRemoveFavorite(selectedFavorite.id)}>
-                    移出收藏
-                  </button>
+                  <span>
+                    {isShareImageGenerationLimitBypassed()
+                      ? '开发模式：生成次数不限'
+                      : `今日还可生成 ${getRemainingShareImageGenerations()} 张`}
+                  </span>
                 </div>
 
                 {shareMessage && <p className="share-message">{shareMessage}</p>}
+
+                {selectedFavorite.shareImage && (
+                  <div className="favorite-reward">
+                    <img src="/qrcode.jpg" alt="随喜赞赏二维码" />
+                    <p>若这句诗刚好照见你，随喜就好。</p>
+                  </div>
+                )}
               </div>
             )}
           </aside>
@@ -2363,7 +2500,7 @@ function App() {
                   if (nearestIndex !== index) return;
                 }
 
-                handleEmojiClick(item.keyword, item.mood);
+                handleEmojiClick(item);
               }}
               className="cursor-pointer"
               style={{

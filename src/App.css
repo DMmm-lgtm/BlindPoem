@@ -157,7 +157,7 @@
 
 .favorites-header button,
 .favorite-back,
-.favorite-detail-footer button {
+.favorite-remove {
   border: 1px solid rgba(255, 232, 173, 0.22);
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 247, 220, 0.92);
@@ -228,9 +228,19 @@
   gap: 0.9rem;
 }
 
+.favorite-detail-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .favorite-back {
-  justify-self: start;
   padding: 0.45rem 0.72rem;
+}
+
+.favorite-remove {
+  padding: 0.42rem 0.68rem;
 }
 
 .favorite-poem {
@@ -282,7 +292,7 @@
 }
 
 .share-actions button:hover:not(:disabled),
-.favorite-detail-footer button:hover {
+.favorite-remove:hover {
   border-color: rgba(255, 232, 173, 0.42);
   background: rgba(246, 215, 123, 0.13);
 }
@@ -295,16 +305,34 @@
 .favorite-detail-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.favorite-detail-footer button {
-  padding: 0.42rem 0.68rem;
 }
 
 .share-message {
   margin: 0;
+}
+
+.favorite-reward {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 232, 173, 0.1);
+}
+
+.favorite-reward img {
+  width: 6.25rem;
+  height: 6.25rem;
+  border-radius: 0.45rem;
+  object-fit: cover;
+  opacity: 0.9;
+}
+
+.favorite-reward p {
+  margin: 0;
+  color: rgba(255, 239, 195, 0.58);
+  font-size: 0.78rem;
+  text-align: center;
 }
 
 @keyframes poemReveal {

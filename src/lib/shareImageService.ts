@@ -4,6 +4,11 @@ const DAILY_LIMIT_KEY = 'blindpoem.shareImageDailyLimit.v1';
 const DAILY_GENERATION_LIMIT = 3;
 const POSTER_WIDTH = 1080;
 const POSTER_HEIGHT = 1440;
+const WEBSITE_URL = 'https://www.blindpoem.space/';
+const WEBSITE_DISPLAY_URL = 'www.blindpoem.space';
+const WEBSITE_QR_CODE_PATH = '/blindpoem-site-qr.png';
+const BYPASS_SHARE_IMAGE_LIMIT =
+  import.meta.env.DEV && import.meta.env.VITE_BYPASS_SHARE_IMAGE_LIMIT === 'true';
 
 type PosterStyle = {
   name: string;
@@ -70,10 +75,17 @@ function writeDailyCount(count: number): void {
 }
 
 export function getRemainingShareImageGenerations(): number {
+  if (BYPASS_SHARE_IMAGE_LIMIT) return Number.POSITIVE_INFINITY;
   return Math.max(0, DAILY_GENERATION_LIMIT - readDailyCount().count);
 }
 
+export function isShareImageGenerationLimitBypassed(): boolean {
+  return BYPASS_SHARE_IMAGE_LIMIT;
+}
+
 function consumeGenerationQuota(): boolean {
+  if (BYPASS_SHARE_IMAGE_LIMIT) return true;
+
   const dailyCount = readDailyCount();
   if (dailyCount.count >= DAILY_GENERATION_LIMIT) return false;
 
@@ -188,6 +200,39 @@ function drawImageCover(
   const x = (width - drawWidth) / 2;
   const y = (height - drawHeight) / 2;
   context.drawImage(image, x, y, drawWidth, drawHeight);
+}
+
+function drawPosterFooter(
+  context: CanvasRenderingContext2D,
+  siteQRCode: HTMLImageElement | null
+) {
+  const margin = 44;
+  const qrSize = 92;
+  const qrPadding = 8;
+  const qrBoxSize = qrSize + qrPadding * 2;
+  const qrX = margin;
+  const qrY = POSTER_HEIGHT - margin - qrBoxSize;
+
+  context.save();
+
+  if (siteQRCode) {
+    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    context.beginPath();
+    context.roundRect(qrX, qrY, qrBoxSize, qrBoxSize, 10);
+    context.fill();
+    context.drawImage(siteQRCode, qrX + qrPadding, qrY + qrPadding, qrSize, qrSize);
+  }
+
+  context.textAlign = 'right';
+  context.fillStyle = 'rgba(255, 244, 210, 0.66)';
+  context.font = '24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  context.fillText('BlindPoem 盲盒诗', POSTER_WIDTH - margin, POSTER_HEIGHT - margin - 26);
+
+  context.fillStyle = 'rgba(255, 244, 210, 0.52)';
+  context.font = '20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  context.fillText(WEBSITE_DISPLAY_URL, POSTER_WIDTH - margin, POSTER_HEIGHT - margin);
+
+  context.restore();
 }
 
 function splitPoemChars(text: string): string[] {
@@ -329,6 +374,7 @@ async function tryGenerateRemoteShareImage(poem: FavoritePoem): Promise<string |
 export async function generateShareImage(poem: FavoritePoem): Promise<string> {
   const remoteImage = await tryGenerateRemoteShareImage(poem);
   const aiBackground = remoteImage ? await loadImage(remoteImage) : null;
+  const siteQRCode = await loadImage(WEBSITE_QR_CODE_PATH);
   if (aiBackground) {
     assertAndConsumeAiGenerationQuota();
   }
@@ -376,11 +422,7 @@ export async function generateShareImage(poem: FavoritePoem): Promise<string> {
   context.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
 
   drawPosterText(context, poem, style);
-
-  context.fillStyle = 'rgba(255, 244, 210, 0.62)';
-  context.font = '24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  context.textAlign = 'right';
-  context.fillText('BlindPoem 盲盒诗', POSTER_WIDTH - 72, POSTER_HEIGHT - 68);
+  drawPosterFooter(context, siteQRCode);
 
   return canvas.toDataURL('image/jpeg', 0.92);
 }
@@ -395,7 +437,7 @@ export function downloadShareImage(image: string, poem: FavoritePoem): void {
 export async function sharePoster(image: string, poem: FavoritePoem): Promise<boolean> {
   if (!navigator.share) return false;
 
-  const text = `${poem.content}\n《${poem.poem_title}》— ${poem.author}\nBlindPoem 盲盒诗`;
+  const text = `${poem.content}\n《${poem.poem_title}》— ${poem.author}\nBlindPoem 盲盒诗\n${WEBSITE_URL}`;
 
   try {
     const blob = await (await fetch(image)).blob();
