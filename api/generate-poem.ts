@@ -167,6 +167,7 @@ function extractChatCompletionText(data: unknown, providerName: string): string 
     choices?: Array<{
       message?: {
         content?: unknown;
+        reasoning_content?: unknown;
       };
       text?: unknown;
     }>;
@@ -196,6 +197,10 @@ function extractChatCompletionText(data: unknown, providerName: string): string 
     return choice.text;
   }
 
+  console.error(`❌ ${providerName} 响应缺少可解析文本:`, JSON.stringify({
+    choiceKeys: choice ? Object.keys(choice) : [],
+    messageKeys: choice?.message ? Object.keys(choice.message) : [],
+  }));
   throw new Error(`无法解析 ${providerName} 响应`);
 }
 
@@ -326,7 +331,7 @@ async function generateWithDeepSeek(fullPrompt: string): Promise<PoemData> {
         messages: [
           {
             role: 'system',
-            content: 'Return JSON only. Recommend one real poem line with known title and author. If uncertain, still return the best verified-looking JSON without commentary.',
+            content: 'Return valid JSON only. No markdown. No commentary. Recommend one real poem line with known title and author. The JSON schema is {"content":"","poem_title":"","author":""}.',
           },
           {
             role: 'user',
@@ -334,8 +339,9 @@ async function generateWithDeepSeek(fullPrompt: string): Promise<PoemData> {
           },
         ],
         temperature: 0.55,
-        top_p: 0.85,
         max_tokens: 256,
+        response_format: { type: 'json_object' },
+        thinking: { type: 'disabled' },
         stream: false,
       }),
       signal: controller.signal,
