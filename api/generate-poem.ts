@@ -24,13 +24,22 @@ const OPENROUTER_MAX_MODEL_ATTEMPTS = 2;
 const DEEPSEEK_TIMEOUT_MS = 12000;
 const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
 
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
 function buildPoemPrompt(moodName: string, shouldMatchMood: boolean): string {
   const mode = shouldMatchMood
     ? `贴合情绪：${moodName}`
     : `不要按情绪选诗；随机选一首好诗中的一句`;
+  const language = pickRandom(['中文', '英文', '中英皆可']);
+  const era = pickRandom(['古典', '现代', '当代', '任意时代']);
+  const style = pickRandom(['清冷', '明亮', '荒诞', '温柔', '锋利', '孤独', '轻盈', '辽阔']);
+  const fame = pickRandom(['避开最常见名句', '可选名句但不要俗套', '优先冷门一点']);
 
   return `${mode}
-真实诗句。必须有明确作者和篇名，不能佚名/未知。优先中文诗句；英文诗句也可以，但必须是一句完整短诗句。
+本次偏好：${language}；${era}；${style}；${fame}。
+真实诗句。必须有明确作者和篇名，不能佚名/未知。中文英文都可以；英文必须是一句完整短诗句。
 不要返回被截断的半句；英文不能以连字符、破折号、省略号或未闭合标点结尾。
 诗句内容尽量不超过80个字符。
 返回JSON：{"content":"","poem_title":"","author":""}`;
@@ -244,8 +253,8 @@ async function requestOpenRouterModel(fullPrompt: string, model: string): Promis
             content: fullPrompt,
           },
         ],
-        temperature: 0.75,
-        top_p: 0.9,
+        temperature: 0.95,
+        top_p: 0.95,
         max_tokens: 256,
       }),
       signal: controller.signal,
@@ -344,7 +353,8 @@ async function generateWithDeepSeek(fullPrompt: string): Promise<PoemData> {
             content: fullPrompt,
           },
         ],
-        temperature: 0.55,
+        temperature: 0.9,
+        top_p: 0.95,
         max_tokens: 256,
         response_format: { type: 'json_object' },
         thinking: { type: 'disabled' },
