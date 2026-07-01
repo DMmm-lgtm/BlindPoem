@@ -1781,11 +1781,6 @@ function App() {
   const handleGenerateShareImage = async () => {
     if (!selectedFavorite) return;
 
-    if (selectedFavorite.shareImage) {
-      setShareMessage('这句诗已经有分享图了。');
-      return;
-    }
-
     setIsGeneratingShareImage(true);
     setShareMessage('');
 
@@ -1793,7 +1788,7 @@ function App() {
       const image = await generateShareImage(selectedFavorite);
       const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, image);
       setFavorites(nextFavorites);
-      setShareMessage('分享图已生成。');
+      setShareMessage(selectedFavorite.shareImage ? '分享图已重新生成。' : '分享图已生成。');
     } catch (error) {
       setShareMessage(error instanceof Error ? error.message : '分享图生成失败，请稍后再试。');
     } finally {
@@ -2404,7 +2399,12 @@ function App() {
                   <span>《{selectedFavorite.poem_title}》 · {selectedFavorite.author}</span>
                 </div>
 
-                {selectedFavorite.shareImage ? (
+                {isGeneratingShareImage ? (
+                  <div className="share-placeholder share-loading">
+                    <span className="share-spinner" aria-hidden="true" />
+                    <span>正在生成分享图</span>
+                  </div>
+                ) : selectedFavorite.shareImage ? (
                   <img
                     src={selectedFavorite.shareImage}
                     alt="诗句分享图"
@@ -2420,14 +2420,14 @@ function App() {
                   <button
                     type="button"
                     onClick={handleGenerateShareImage}
-                    disabled={isGeneratingShareImage || Boolean(selectedFavorite.shareImage)}
+                    disabled={isGeneratingShareImage}
                   >
-                    {isGeneratingShareImage ? '生成中...' : selectedFavorite.shareImage ? '已生成' : '生成分享图'}
+                    {isGeneratingShareImage ? '生成中...' : selectedFavorite.shareImage ? '重新生成图' : '生成分享图'}
                   </button>
                   <button
                     type="button"
                     onClick={handleDownloadShareImage}
-                    disabled={!selectedFavorite.shareImage}
+                    disabled={isGeneratingShareImage || !selectedFavorite.shareImage}
                   >
                     保存 JPG
                   </button>
@@ -2437,7 +2437,7 @@ function App() {
                   <button
                     type="button"
                     onClick={handleSystemShare}
-                    disabled={!selectedFavorite.shareImage}
+                    disabled={isGeneratingShareImage || !selectedFavorite.shareImage}
                   >
                     分享
                   </button>

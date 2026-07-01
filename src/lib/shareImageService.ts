@@ -93,6 +93,10 @@ function consumeGenerationQuota(): boolean {
   return true;
 }
 
+function hasAiGenerationQuota(): boolean {
+  return BYPASS_SHARE_IMAGE_LIMIT || readDailyCount().count < DAILY_GENERATION_LIMIT;
+}
+
 function assertAndConsumeAiGenerationQuota(): void {
   if (!consumeGenerationQuota()) {
     throw new Error(`今日 AI 分享图生成次数已用完，明天会恢复 ${DAILY_GENERATION_LIMIT} 次。`);
@@ -100,7 +104,7 @@ function assertAndConsumeAiGenerationQuota(): void {
 }
 
 function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const segments = text.split(/(?=[，。；！？,.!?])|(?<=[，。；！？,.!?])|\s+/).filter(Boolean);
+  const segments = text.match(/[^，。；！？,.!?\s]+[，。；！？,.!?]?|\S+/g) || [];
   const lines: string[] = [];
   let currentLine = '';
 
@@ -115,7 +119,7 @@ function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: num
   });
 
   if (currentLine) lines.push(currentLine);
-  return lines.slice(0, 6);
+  return lines;
 }
 
 function wrapEnglishText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -235,26 +239,120 @@ function drawPosterFooter(
   context.restore();
 }
 
-function splitPoemChars(text: string): string[] {
-  return [...text.replace(/\s+/g, '')].filter(Boolean);
-}
-
 function isEnglishPoem(text: string): boolean {
   const latinChars = text.match(/[A-Za-z]/g)?.length || 0;
   const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length || 0;
   return latinChars > 0 && latinChars >= cjkChars * 2;
 }
 
-function drawVerticalText(
+function getPoemSourceLines(text: string): string[] {
+  const explicitLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (explicitLines.length > 1) {
+    return explicitLines;
+  }
+
+  const compactText = text.trim();
+  return compactText.match(/[^，。；！？,.!?]+[，。；！？,.!?]?/g)
+    ?.map((line) => line.trim())
+    .filter(Boolean) || [compactText];
+}
+
+function fitPoemLines(
   context: CanvasRenderingContext2D,
-  text: string,
-  x: number,
+  sourceLines: string[],
+  fontFamily: string,
+  maxWidth: number,
+  maxHeight: number,
+  startSize: number,
+  minSize: number,
+  lineHeightRatio: number
+): { fontSize: number; lineHeight: number; lines: string[] } {
+  for (let fontSize = startSize; fontSize >= minSize; fontSize -= 2) {
+    context.font = `${fontSize}px ${fontFamily}`;
+    const lines = sourceLines.flatMap((line) => wrapText(context, line, maxWidth));
+    const lineHeight = Math.round(fontSize * lineHeightRatio);
+    const fitsWidth = lines.every((line) => context.measureText(line).width <= maxWidth);
+    const fitsHeight = lines.length * lineHeight <= maxHeight;
+
+    if (fitsWidth && fitsHeight) {
+      return { fontSize, lineHeight, lines };
+    }
+  }
+
+  context.font = `${minSize}px ${fontFamily}`;
+  const lineHeight = Math.round(minSize * lineHeightRatio);
+  const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+  return {
+    fontSize: minSize,
+    lineHeight,
+    lines: sourceLines.flatMap((line) => wrapText(context, line, maxWidth)).slice(0, maxLines),
+  };
+}
+
+function fitVerticalPoemColumns(
+  sourceLines: string[],
+  maxWidth: number,
+  maxHeight: number,
+  startSize: number,
+  minSize: number
+): { fontSize: number; lineHeight: number; columnGap: number; columns: string[] } {
+  for (let fontSize = startSize; fontSize >= minSize; fontSize -= 2) {
+    const lineHeight = Math.round(fontSize * 1.22);
+    const columnGap = Math.round(fontSize * 0.86);
+    const maxCharsPerColumn = Math.max(1, Math.floor(maxHeight / lineHeight));
+    const columns = sourceLines.flatMap((line) => {
+      const chars = [...line.replace(/\s+/g, '')].filter(Boolean);
+      const chunks: string[] = [];
+
+      for (let index = 0; index < chars.length; index += maxCharsPerColumn) {
+        chunks.push(chars.slice(index, index + maxCharsPerColumn).join(''));
+      }
+
+      return chunks;
+    });
+    const totalWidth = fontSize + Math.max(0, columns.length - 1) * columnGap;
+
+    if (totalWidth <= maxWidth) {
+      return { fontSize, lineHeight, columnGap, columns };
+    }
+  }
+
+  const lineHeight = Math.round(minSize * 1.22);
+  const columnGap = Math.round(minSize * 0.86);
+  const maxCharsPerColumn = Math.max(1, Math.floor(maxHeight / lineHeight));
+  const maxColumns = Math.max(1, Math.floor((maxWidth - minSize) / columnGap) + 1);
+  const columns = sourceLines.flatMap((line) => {
+    const chars = [...line.replace(/\s+/g, '')].filter(Boolean);
+    const chunks: string[] = [];
+
+    for (let index = 0; index < chars.length; index += maxCharsPerColumn) {
+      chunks.push(chars.slice(index, index + maxCharsPerColumn).join(''));
+    }
+
+    return chunks;
+  }).slice(0, maxColumns);
+
+  return { fontSize: minSize, lineHeight, columnGap, columns };
+}
+
+function drawVerticalColumns(
+  context: CanvasRenderingContext2D,
+  columns: string[],
+  startX: number,
   y: number,
+  columnGap: number,
   lineHeight: number,
-  maxChars: number
+  direction: 1 | -1
 ) {
-  splitPoemChars(text).slice(0, maxChars).forEach((char, index) => {
-    context.fillText(char, x, y + index * lineHeight);
+  columns.forEach((column, columnIndex) => {
+    const x = startX + columnIndex * columnGap * direction;
+    [...column].forEach((char, charIndex) => {
+      context.fillText(char, x, y + charIndex * lineHeight);
+    });
   });
 }
 
@@ -268,11 +366,19 @@ function drawEnglishPosterText(
   const maxWidth = isRight ? 620 : 720;
   const x = isRight ? POSTER_WIDTH - 92 : 92;
   const y = isRight ? 900 : 880;
+  const maxTextBottom = 1210;
 
   context.textAlign = isRight ? 'right' : 'left';
   context.fillStyle = style.text;
 
-  const fitted = fitEnglishLines(context, poem.content, maxWidth, 4, isRight ? 44 : 54, 30);
+  const fitted = fitEnglishLines(
+    context,
+    poem.content,
+    maxWidth,
+    Math.max(1, Math.floor((maxTextBottom - y) / 40)),
+    isRight ? 44 : 54,
+    26
+  );
   context.font = `${fitted.fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
   fitted.lines.forEach((line, index) => {
     context.fillText(line, x, y + index * fitted.lineHeight);
@@ -284,7 +390,8 @@ function drawEnglishPosterText(
   const metaText = `《${poem.poem_title}》 — ${poem.author}`;
   const metaLines = wrapEnglishText(context, metaText, maxWidth);
   const metaY = y + fitted.lines.length * fitted.lineHeight + 38;
-  metaLines.slice(0, 2).forEach((line, index) => {
+  const maxMetaLines = Math.max(1, Math.floor((maxTextBottom - metaY) / 34));
+  metaLines.slice(0, maxMetaLines).forEach((line, index) => {
     context.fillText(line, x, metaY + index * 34);
   });
 }
@@ -309,42 +416,82 @@ function drawPosterText(
   if (isEnglishPoem(poem.content)) {
     drawEnglishPosterText(context, poem, style, layout);
   } else if (layout === 'upper-left-vertical') {
+    const poemColumns = fitVerticalPoemColumns(
+      getPoemSourceLines(poem.content),
+      280,
+      800,
+      48,
+      30
+    );
     context.textAlign = 'center';
-    context.font = '48px QianTuBiFeng, serif';
-    drawVerticalText(context, poem.content, 150, 190, 62, 18);
+    context.font = `${poemColumns.fontSize}px QianTuBiFeng, serif`;
+    drawVerticalColumns(
+      context,
+      poemColumns.columns,
+      132,
+      190,
+      poemColumns.columnGap,
+      poemColumns.lineHeight,
+      1
+    );
     context.shadowBlur = 0;
     context.fillStyle = style.accent;
     context.font = '24px QianTuBiFeng, serif';
-    drawVerticalText(context, `《${poem.poem_title}》`, 228, 214, 34, 12);
-    drawVerticalText(context, poem.author, 270, 214, 34, 8);
+    drawVerticalColumns(context, [`《${poem.poem_title}》`], 430, 214, 34, 34, 1);
+    drawVerticalColumns(context, [poem.author], 472, 214, 34, 34, 1);
   } else if (layout === 'right-vertical') {
+    const poemColumns = fitVerticalPoemColumns(
+      getPoemSourceLines(poem.content),
+      360,
+      780,
+      52,
+      30
+    );
     context.textAlign = 'center';
-    context.font = '52px QianTuBiFeng, serif';
-    drawVerticalText(context, poem.content, POSTER_WIDTH - 150, 260, 68, 18);
+    context.font = `${poemColumns.fontSize}px QianTuBiFeng, serif`;
+    drawVerticalColumns(
+      context,
+      poemColumns.columns,
+      POSTER_WIDTH - 132,
+      250,
+      poemColumns.columnGap,
+      poemColumns.lineHeight,
+      -1
+    );
     context.shadowBlur = 0;
     context.fillStyle = style.accent;
     context.font = '24px QianTuBiFeng, serif';
-    drawVerticalText(context, `《${poem.poem_title}》`, POSTER_WIDTH - 238, 300, 34, 12);
-    drawVerticalText(context, poem.author, POSTER_WIDTH - 280, 300, 34, 8);
+    drawVerticalColumns(context, [`《${poem.poem_title}》`], POSTER_WIDTH - 520, 300, 34, 34, -1);
+    drawVerticalColumns(context, [poem.author], POSTER_WIDTH - 562, 300, 34, 34, -1);
   } else {
     const isRight = layout === 'bottom-right-small';
     const x = isRight ? POSTER_WIDTH - 92 : 92;
-    const y = isRight ? 1030 : 960;
+    const y = isRight ? 960 : 900;
     const maxWidth = isRight ? 560 : 690;
+    const maxTextBottom = 1210;
 
     context.textAlign = isRight ? 'right' : 'left';
-    context.font = `${isRight ? 42 : 56}px QianTuBiFeng, serif`;
-    const lines = wrapText(context, poem.content, maxWidth);
-    const lineHeight = isRight ? 66 : 82;
-    lines.forEach((line, index) => {
-      context.fillText(line, x, y + index * lineHeight);
+    const fitted = fitPoemLines(
+      context,
+      getPoemSourceLines(poem.content),
+      'QianTuBiFeng, serif',
+      maxWidth,
+      maxTextBottom - y - 54,
+      isRight ? 42 : 56,
+      28,
+      isRight ? 1.45 : 1.48
+    );
+    context.font = `${fitted.fontSize}px QianTuBiFeng, serif`;
+    fitted.lines.forEach((line, index) => {
+      context.fillText(line, x, y + index * fitted.lineHeight);
     });
 
     context.shadowBlur = 0;
     context.fillStyle = style.accent;
-    context.font = '26px QianTuBiFeng, serif';
-    const metaY = y + lines.length * lineHeight + 34;
-    context.fillText(`《${poem.poem_title}》 · ${poem.author}`, x, metaY);
+    const metaFontSize = Math.max(20, Math.min(26, Math.round(fitted.fontSize * 0.58)));
+    context.font = `${metaFontSize}px QianTuBiFeng, serif`;
+    const metaY = Math.min(maxTextBottom, y + fitted.lines.length * fitted.lineHeight + 34);
+    context.fillText(`《${poem.poem_title}》 · ${poem.author}`, x, metaY, maxWidth);
   }
 
   context.restore();
@@ -372,7 +519,7 @@ async function tryGenerateRemoteShareImage(poem: FavoritePoem): Promise<string |
 }
 
 export async function generateShareImage(poem: FavoritePoem): Promise<string> {
-  const remoteImage = await tryGenerateRemoteShareImage(poem);
+  const remoteImage = hasAiGenerationQuota() ? await tryGenerateRemoteShareImage(poem) : null;
   const aiBackground = remoteImage ? await loadImage(remoteImage) : null;
   const siteQRCode = await loadImage(WEBSITE_QR_CODE_PATH);
   if (aiBackground) {
