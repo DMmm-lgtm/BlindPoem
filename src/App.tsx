@@ -318,6 +318,10 @@ const POSTER_EDGE_PADDING = 18;
 const POSTER_EDITOR_MIN_BOX_SIZE = 36;
 const POSTER_EDITOR_MIN_FONT_SCALE = 0.35;
 const POSTER_EDITOR_MAX_FONT_SCALE = 2.8;
+const POSTER_FOOTER_RESERVED_ZONES = [
+  { left: 34, top: 1276, right: 172, bottom: 1414 },
+  { left: 720, top: 1328, right: 1052, bottom: 1414 },
+];
 
 type PosterEditorIconName = 'arrow-left' | 'arrow-right' | 'layout-horizontal' | 'layout-vertical' | 'check' | 'reset' | 'close';
 
@@ -415,6 +419,31 @@ function getPosterMetaBounds(
     top: layout.y,
     right: left + metaWidth,
     bottom: layout.y + metaHeight,
+  };
+}
+
+function doPosterBoundsOverlap(
+  first: { left: number; top: number; right: number; bottom: number },
+  second: { left: number; top: number; right: number; bottom: number }
+): boolean {
+  return first.left < second.right
+    && first.right > second.left
+    && first.top < second.bottom
+    && first.bottom > second.top;
+}
+
+function getPosterContentBounds(
+  layout: PosterTextLayout,
+  metrics: PosterTextPreviewMetrics,
+  poem: FavoritePoem
+) {
+  const metaBounds = getPosterMetaBounds(layout, metrics, poem);
+
+  return {
+    left: Math.min(layout.x, metaBounds.left),
+    top: Math.min(layout.y, metaBounds.top),
+    right: Math.max(layout.x + layout.width, metaBounds.right),
+    bottom: Math.max(layout.y + layout.height, metaBounds.bottom),
   };
 }
 
@@ -2165,13 +2194,13 @@ function App() {
 
     if (!selectedFavorite) return nextLayout;
 
-    for (let index = 0; index < 2; index += 1) {
+    for (let index = 0; index < 4; index += 1) {
       const metrics = getPosterTextPreviewMetrics(selectedFavorite, nextLayout);
-      const metaBounds = getPosterMetaBounds(nextLayout, metrics, selectedFavorite);
-      const left = Math.min(nextLayout.x, metaBounds.left);
-      const top = Math.min(nextLayout.y, metaBounds.top);
-      const right = Math.max(nextLayout.x + nextLayout.width, metaBounds.right);
-      const bottom = Math.max(nextLayout.y + nextLayout.height, metaBounds.bottom);
+      const contentBounds = getPosterContentBounds(nextLayout, metrics, selectedFavorite);
+      const left = contentBounds.left;
+      const top = contentBounds.top;
+      const right = contentBounds.right;
+      const bottom = contentBounds.bottom;
 
       if (left < POSTER_EDGE_PADDING) nextLayout.x += POSTER_EDGE_PADDING - left;
       if (right > SHARE_POSTER_SIZE.width - POSTER_EDGE_PADDING) {
@@ -2181,6 +2210,15 @@ function App() {
       if (bottom > SHARE_POSTER_SIZE.height - POSTER_EDGE_PADDING) {
         nextLayout.y -= bottom - (SHARE_POSTER_SIZE.height - POSTER_EDGE_PADDING);
       }
+
+      const adjustedMetrics = getPosterTextPreviewMetrics(selectedFavorite, nextLayout);
+      const adjustedContentBounds = getPosterContentBounds(nextLayout, adjustedMetrics, selectedFavorite);
+
+      POSTER_FOOTER_RESERVED_ZONES.forEach((reservedZone) => {
+        if (!doPosterBoundsOverlap(adjustedContentBounds, reservedZone)) return;
+
+        nextLayout.y -= adjustedContentBounds.bottom - reservedZone.top + POSTER_EDGE_PADDING;
+      });
 
       nextLayout.x = clamp(nextLayout.x, 0, SHARE_POSTER_SIZE.width - nextLayout.width);
       nextLayout.y = clamp(nextLayout.y, 0, SHARE_POSTER_SIZE.height - nextLayout.height);
@@ -2474,7 +2512,7 @@ function App() {
       nextWidth,
       nextHeight,
       startLayout,
-      posterDragRef.current.mode === 'move'
+      true
     );
 
     posterDragRef.current.layout = nextLayout;
