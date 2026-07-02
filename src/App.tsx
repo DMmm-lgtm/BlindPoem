@@ -198,6 +198,7 @@ type PosterEditorGesture = {
   startX: number;
   startY: number;
   startDistance?: number;
+  startLayout: PosterTextLayout;
   layout: PosterTextLayout;
 };
 
@@ -310,6 +311,72 @@ const POSTER_RESIZE_HANDLES: PosterResizeHandle[] = [
 const POSTER_META_GAP = 24;
 const POSTER_EDGE_PADDING = 18;
 const POSTER_EDITOR_MIN_BOX_SIZE = 36;
+
+type PosterEditorIconName = 'arrow-left' | 'arrow-right' | 'layout-horizontal' | 'layout-vertical' | 'check' | 'reset' | 'close';
+
+function PosterEditorIcon({ name }: { name: PosterEditorIconName }) {
+  if (name === 'layout-horizontal') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M5 12h14" />
+        <path d="m8 8-4 4 4 4" />
+        <path d="m16 8 4 4-4 4" />
+      </svg>
+    );
+  }
+
+  if (name === 'layout-vertical') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 5v14" />
+        <path d="m8 8 4-4 4 4" />
+        <path d="m8 16 4 4 4-4" />
+      </svg>
+    );
+  }
+
+  if (name === 'arrow-right') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M5 12h14" />
+        <path d="m13 6 6 6-6 6" />
+      </svg>
+    );
+  }
+
+  if (name === 'arrow-left') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M19 12H5" />
+        <path d="m11 6-6 6 6 6" />
+      </svg>
+    );
+  }
+
+  if (name === 'check') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="m5 13 4 4L19 7" />
+      </svg>
+    );
+  }
+
+  if (name === 'reset') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M5 9a7 7 0 1 1 2 9" />
+        <path d="M5 4v5h5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M6 6l12 12" />
+      <path d="M18 6 6 18" />
+    </svg>
+  );
+}
 
 function getPosterMetaBounds(
   layout: PosterTextLayout,
@@ -2206,6 +2273,7 @@ function App() {
       startX: (firstPointer.x + secondPointer.x) / 2,
       startY: (firstPointer.y + secondPointer.y) / 2,
       startDistance,
+      startLayout: { ...draftPosterLayout },
       layout: { ...draftPosterLayout },
     };
     return true;
@@ -2238,6 +2306,7 @@ function App() {
       offsetY: event.clientY - boxRect.top,
       startX: event.clientX,
       startY: event.clientY,
+      startLayout: { ...draftPosterLayout },
       layout: { ...draftPosterLayout },
     };
   };
@@ -2254,7 +2323,7 @@ function App() {
     }
 
     const frameRect = posterEditorFrameRef.current.getBoundingClientRect();
-    const startLayout = posterDragRef.current.layout;
+    const startLayout = posterDragRef.current.startLayout;
     const startLeft = (startLayout.x / SHARE_POSTER_SIZE.width) * frameRect.width;
     const startTop = (startLayout.y / SHARE_POSTER_SIZE.height) * frameRect.height;
     const startWidth = (startLayout.width / SHARE_POSTER_SIZE.width) * frameRect.width;
@@ -2270,28 +2339,43 @@ function App() {
 
       const [firstPointer, secondPointer] = pointers;
       const distance = Math.hypot(firstPointer.x - secondPointer.x, firstPointer.y - secondPointer.y);
-      const centerX = startLeft + startWidth / 2;
-      const centerY = startTop + startHeight / 2;
+      const gestureStartX = posterDragRef.current.startX - frameRect.left;
+      const gestureStartY = posterDragRef.current.startY - frameRect.top;
+      const currentGestureX = (firstPointer.x + secondPointer.x) / 2 - frameRect.left;
+      const currentGestureY = (firstPointer.y + secondPointer.y) / 2 - frameRect.top;
+      const startCenterX = startLeft + startWidth / 2;
+      const startCenterY = startTop + startHeight / 2;
       const minWidth = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.width) * frameRect.width;
       const minHeight = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.height) * frameRect.height;
       const minScale = Math.max(minWidth / startWidth, minHeight / startHeight);
       const rawScale = distance / posterDragRef.current.startDistance;
+      const softenedScale = 1 + (rawScale - 1) * 0.58;
       const maxScale = getPosterResizeMaxScale(
         frameRect,
         startWidth,
         startHeight,
-        centerX,
-        centerY,
+        gestureStartX,
+        gestureStartY,
         false,
         false,
         false,
         false
       );
-      const scale = clamp(rawScale, minScale, maxScale);
+      const scale = clamp(softenedScale, minScale, maxScale);
       nextWidth = startWidth * scale;
       nextHeight = startHeight * scale;
-      nextLeft = clamp(centerX - nextWidth / 2, 0, frameRect.width - nextWidth);
-      nextTop = clamp(centerY - nextHeight / 2, 0, frameRect.height - nextHeight);
+      nextLeft = clamp(
+        currentGestureX - (gestureStartX - startLeft) * scale,
+        0,
+        frameRect.width - nextWidth
+      );
+      nextTop = clamp(
+        currentGestureY - (gestureStartY - startTop) * scale,
+        0,
+        frameRect.height - nextHeight
+      );
+      if (!Number.isFinite(nextLeft)) nextLeft = startCenterX - nextWidth / 2;
+      if (!Number.isFinite(nextTop)) nextTop = startCenterY - nextHeight / 2;
     } else if (posterDragRef.current.mode === 'resize') {
       const minWidth = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.width) * frameRect.width;
       const minHeight = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.height) * frameRect.height;
@@ -3106,7 +3190,7 @@ function App() {
                           aria-label={draftPosterLayout.kind === 'upper-left-vertical' ? '切换为右往左读' : '切换为左往右读'}
                           title={draftPosterLayout.kind === 'upper-left-vertical' ? '切换为右往左读' : '切换为左往右读'}
                         >
-                          {draftPosterLayout.kind === 'upper-left-vertical' ? '→' : '←'}
+                          <PosterEditorIcon name={draftPosterLayout.kind === 'upper-left-vertical' ? 'arrow-right' : 'arrow-left'} />
                         </button>
                       )}
                       <button
@@ -3118,7 +3202,7 @@ function App() {
                         aria-label={draftPosterLayout.kind.includes('vertical') ? '切换为横排' : '切换为竖排'}
                         title={draftPosterLayout.kind.includes('vertical') ? '切换为横排' : '切换为竖排'}
                       >
-                        {draftPosterLayout.kind.includes('vertical') ? '↔' : '↕'}
+                        <PosterEditorIcon name={draftPosterLayout.kind.includes('vertical') ? 'layout-horizontal' : 'layout-vertical'} />
                       </button>
                     </div>
                     <div className="poster-editor-actions">
@@ -3131,7 +3215,7 @@ function App() {
                         aria-label="完成文字调整"
                         title="完成"
                       >
-                        ✓
+                        <PosterEditorIcon name="check" />
                       </button>
                       <button
                         type="button"
@@ -3142,7 +3226,7 @@ function App() {
                         aria-label="还原文字调整"
                         title="还原"
                       >
-                        ↺
+                        <PosterEditorIcon name="reset" />
                       </button>
                       <button
                         type="button"
@@ -3153,7 +3237,7 @@ function App() {
                         aria-label="取消文字调整"
                         title="取消"
                       >
-                        ×
+                        <PosterEditorIcon name="close" />
                       </button>
                     </div>
                     {posterTextPreviewMetrics && (
