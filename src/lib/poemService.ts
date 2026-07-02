@@ -54,6 +54,12 @@ const LOCAL_FALLBACK_POEMS: Poem[] = [
 
 const LOCAL_POEM_CACHE_KEY = 'blindpoem.localPoems.v1';
 const MAX_LOCAL_POEMS = 80;
+const INVALID_AUTHOR_PATTERN = /^(未知|佚名|匿名|无|anonymous|unknown)$/i;
+
+function hasKnownAuthor(poem: Pick<Poem, 'author'>): boolean {
+  const author = String(poem.author || '').trim();
+  return Boolean(author) && !INVALID_AUTHOR_PATTERN.test(author);
+}
 
 function readLocalPoems(): Poem[] {
   if (typeof window === 'undefined') {
@@ -68,7 +74,7 @@ function readLocalPoems(): Poem[] {
 
     const poems = JSON.parse(raw) as Poem[];
     return Array.isArray(poems)
-      ? poems.filter((poem) => poem && poem.content)
+      ? poems.filter((poem) => poem && poem.content && hasKnownAuthor(poem))
       : [];
   } catch (error) {
     console.warn('⚠️ 读取本地诗句缓存失败：', error);
@@ -77,6 +83,11 @@ function readLocalPoems(): Poem[] {
 }
 
 function savePoemToLocalCache(poem: Poem): boolean {
+  if (!hasKnownAuthor(poem)) {
+    console.info('ℹ️ 跳过保存匿名/未知作者诗句');
+    return false;
+  }
+
   if (typeof window === 'undefined') {
     return false;
   }
@@ -104,7 +115,8 @@ function savePoemToLocalCache(poem: Poem): boolean {
 
 function getLocalFallbackPoem(): Poem {
   const cachedPoems = readLocalPoems();
-  const poemPool = cachedPoems.length > 0 ? cachedPoems : LOCAL_FALLBACK_POEMS;
+  const localFallbackPoems = LOCAL_FALLBACK_POEMS.filter(hasKnownAuthor);
+  const poemPool = cachedPoems.length > 0 ? cachedPoems : localFallbackPoems;
   const randomIndex = Math.floor(Math.random() * poemPool.length);
   return poemPool[randomIndex];
 }
@@ -146,6 +158,12 @@ export async function savePoemToDatabase(
     author,
     mood,
   };
+
+  if (!hasKnownAuthor(poemToSave)) {
+    console.info('ℹ️ 跳过保存匿名/未知作者诗句');
+    return false;
+  }
+
   const savedLocally = savePoemToLocalCache(poemToSave);
 
   if (!isSupabaseConfigured || !supabase) {
@@ -219,7 +237,9 @@ export async function getRandomPoemFromDatabase(): Promise<Poem | null> {
   try {
     const { count, error: countError } = await supabase
       .from('poems')
-      .select('id', { count: 'exact', head: true });
+      .select('id', { count: 'exact', head: true })
+      .not('author', 'is', null)
+      .not('author', 'in', '("未知","佚名","匿名","无","anonymous","unknown")');
 
     if (countError) {
       console.error('❌ 查询 Supabase 诗句数量失败：', countError);
@@ -235,6 +255,8 @@ export async function getRandomPoemFromDatabase(): Promise<Poem | null> {
     const { data, error } = await supabase
       .from('poems')
       .select('*')
+      .not('author', 'is', null)
+      .not('author', 'in', '("未知","佚名","匿名","无","anonymous","unknown")')
       .range(randomOffset, randomOffset)
       .limit(1);
 
@@ -248,7 +270,12 @@ export async function getRandomPoemFromDatabase(): Promise<Poem | null> {
       return getLocalFallbackPoem();
     }
 
-    const randomPoem = data[0];
+    const randomPoem = data.find(hasKnownAuthor);
+
+    if (!randomPoem) {
+      console.warn('⚠️ 随机诗句作者未知，改用本地备用诗句');
+      return getLocalFallbackPoem();
+    }
 
     console.log('✅ 从数据库读取到随机诗句：', randomPoem.content);
     return randomPoem;

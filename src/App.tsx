@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import type { CSSProperties, PointerEvent } from 'react';
 import { generatePoem } from './lib/aiClient';
 import { savePoemToDatabase, getRandomPoemFromDatabase, incrementPoemLike } from './lib/poemService';
 import {
@@ -11,11 +12,17 @@ import {
 import type { FavoritePoem } from './lib/favoriteService';
 import {
   downloadShareImage,
+  createPosterLayoutForKind,
+  formatPosterTextLayoutForEditing,
   generateShareImage,
+  getPosterTextPreviewMetrics,
   getRemainingShareImageGenerations,
   isShareImageGenerationLimitBypassed,
+  regenerateShareImageWithLayout,
   sharePoster,
+  SHARE_POSTER_SIZE,
 } from './lib/shareImageService';
+import type { PosterLayoutKind, PosterTextLayout, PosterTextPreviewMetrics } from './lib/shareImageService';
 import './App.css';
 
 // 🎲 Fisher-Yates 洗牌算法 - 用于随机打乱数组
@@ -180,6 +187,178 @@ type EmojiClickRecord = {
   keyword: string;
 };
 
+type PosterResizeHandle = 'top' | 'right' | 'bottom' | 'left' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+type PosterEditorGesture = {
+  pointerId: number;
+  mode: 'move' | 'resize' | 'pinch';
+  handle?: PosterResizeHandle;
+  offsetX: number;
+  offsetY: number;
+  startX: number;
+  startY: number;
+  startDistance?: number;
+  layout: PosterTextLayout;
+};
+
+function isPosterTextLayout(layout: unknown): layout is PosterTextLayout {
+  if (!layout || typeof layout !== 'object') return false;
+
+  const value = layout as Record<string, unknown>;
+  return (
+    typeof value.kind === 'string' &&
+    typeof value.styleName === 'string' &&
+    typeof value.text === 'string' &&
+    typeof value.x === 'number' &&
+    typeof value.y === 'number' &&
+    typeof value.width === 'number' &&
+    typeof value.height === 'number' &&
+    (value.fontScale === undefined || typeof value.fontScale === 'number')
+  );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function detectPosterResizeHandle(
+  boxRect: DOMRect,
+  clientX: number,
+  clientY: number
+): PosterResizeHandle | undefined {
+  const edgeSize = 12;
+  const isNearLeft = Math.abs(clientX - boxRect.left) <= edgeSize;
+  const isNearRight = Math.abs(clientX - boxRect.right) <= edgeSize;
+  const isNearTop = Math.abs(clientY - boxRect.top) <= edgeSize;
+  const isNearBottom = Math.abs(clientY - boxRect.bottom) <= edgeSize;
+  const isWithinX = clientX >= boxRect.left - edgeSize && clientX <= boxRect.right + edgeSize;
+  const isWithinY = clientY >= boxRect.top - edgeSize && clientY <= boxRect.bottom + edgeSize;
+
+  if (!isWithinX || !isWithinY) return undefined;
+  if (isNearTop && isNearLeft) return 'top-left';
+  if (isNearTop && isNearRight) return 'top-right';
+  if (isNearBottom && isNearLeft) return 'bottom-left';
+  if (isNearBottom && isNearRight) return 'bottom-right';
+  if (isNearTop) return 'top';
+  if (isNearRight) return 'right';
+  if (isNearBottom) return 'bottom';
+  if (isNearLeft) return 'left';
+  return undefined;
+}
+
+function getPosterResizeMaxScale(
+  frameRect: DOMRect,
+  startWidth: number,
+  startHeight: number,
+  anchorX: number,
+  anchorY: number,
+  isLeftHandle: boolean,
+  isTopHandle: boolean,
+  isRightHandle: boolean,
+  isBottomHandle: boolean
+): number {
+  const maxWidth = isLeftHandle
+    ? anchorX
+    : isRightHandle
+      ? frameRect.width - anchorX
+      : Math.min(anchorX, frameRect.width - anchorX) * 2;
+  const maxHeight = isTopHandle
+    ? anchorY
+    : isBottomHandle
+      ? frameRect.height - anchorY
+      : Math.min(anchorY, frameRect.height - anchorY) * 2;
+
+  return Math.max(1, Math.min(maxWidth / startWidth, maxHeight / startHeight));
+}
+
+function normalizePoemContent(content: string): string {
+  const lines = content
+    .replace(/[\/／\\|]+/g, '\n')
+    .replace(/[，。、；！？,.!?;:：]+/g, '\n')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[“”"‘’'《》〈〉「」『』（）()【】[\]{}]/g, '').trim())
+    .filter(Boolean);
+
+  return lines.join('\n') || content.trim();
+}
+
+function getPoemDisplayLines(content: string): string[] {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+const POSTER_EDITOR_LAYOUT_SIZES: Record<PosterLayoutKind, Pick<PosterTextLayout, 'width' | 'height'>> = {
+  'bottom-left': { width: 690, height: 310 },
+  'bottom-right-small': { width: 560, height: 270 },
+  'upper-left-vertical': { width: 430, height: 850 },
+  'right-vertical': { width: 430, height: 830 },
+};
+
+const POSTER_RESIZE_HANDLES: PosterResizeHandle[] = [
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right',
+];
+
+const POSTER_META_GAP = 24;
+const POSTER_EDGE_PADDING = 18;
+const POSTER_EDITOR_MIN_BOX_SIZE = 36;
+
+function getPosterMetaBounds(
+  layout: PosterTextLayout,
+  metrics: PosterTextPreviewMetrics,
+  poem: FavoritePoem
+) {
+  const isVertical = layout.kind.includes('vertical');
+
+  if (!isVertical) {
+    return {
+      left: layout.x,
+      top: layout.y + layout.height + metrics.metaLineHeight * 0.35,
+      right: layout.x + layout.width,
+      bottom: layout.y + layout.height + metrics.metaLineHeight * 1.45,
+    };
+  }
+
+  const titleLength = [...`《${poem.poem_title}》`].length;
+  const authorLength = [...poem.author].length;
+  const metaHeight = Math.max(titleLength, authorLength) * metrics.metaLineHeight;
+  const metaWidth = metrics.metaLineHeight * 2;
+  const isLeftToRight = layout.kind === 'upper-left-vertical';
+  const left = isLeftToRight
+    ? layout.x + layout.width + POSTER_META_GAP
+    : layout.x - POSTER_META_GAP - metaWidth;
+
+  return {
+    left,
+    top: layout.y,
+    right: left + metaWidth,
+    bottom: layout.y + metaHeight,
+  };
+}
+
+function getPosterMetaStyle(
+  layout: PosterTextLayout,
+  metrics: PosterTextPreviewMetrics,
+  poem: FavoritePoem
+): CSSProperties {
+  const bounds = getPosterMetaBounds(layout, metrics, poem);
+
+  return {
+    left: `${(bounds.left / SHARE_POSTER_SIZE.width) * 100}%`,
+    top: `${(bounds.top / SHARE_POSTER_SIZE.height) * 100}%`,
+    width: `${((bounds.right - bounds.left) / SHARE_POSTER_SIZE.width) * 100}%`,
+    minHeight: `${((bounds.bottom - bounds.top) / SHARE_POSTER_SIZE.height) * 100}%`,
+  };
+}
+
 function App() {
   // 📱 移动设备检测：桌面浏览器即使窗口较窄，也保留完整动效。
   const getIsTouchDevice = () =>
@@ -309,6 +488,7 @@ function App() {
   
   // 跳过入场动画定时器引用
   const skipTimersRef = useRef<number[]>([]);
+  const isWelcomeSkipInProgressRef = useRef(false);
   const welcomeAnimationStartRef = useRef<number>(Date.now());
   const welcomeLineRefs = useRef<(HTMLDivElement | null)[]>([]);
   
@@ -328,11 +508,20 @@ function App() {
   const [selectedFavoriteId, setSelectedFavoriteId] = useState<string | null>(null);
   const [isGeneratingShareImage, setIsGeneratingShareImage] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
+  const [isPosterTextEditorOpen, setIsPosterTextEditorOpen] = useState(false);
+  const [draftPosterLayout, setDraftPosterLayout] = useState<PosterTextLayout | null>(null);
+  const [posterEditorFrameWidth, setPosterEditorFrameWidth] = useState(0);
+  const [isPosterTextEditingContent, setIsPosterTextEditingContent] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
   
   // 淡出动画状态
   const [isPoemFadingOut, setIsPoemFadingOut] = useState(false); // 诗句框淡出状态
   const [isQRFadingOut, setIsQRFadingOut] = useState(false);
+  const posterEditorFrameRef = useRef<HTMLDivElement | null>(null);
+  const posterEditorBoxRef = useRef<HTMLDivElement | null>(null);
+  const posterEditorTextRef = useRef<HTMLTextAreaElement | null>(null);
+  const posterDragRef = useRef<PosterEditorGesture | null>(null);
+  const posterPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
 
   type StarParticle = {
     id: string;
@@ -380,6 +569,14 @@ function App() {
   const selectedFavorite = useMemo(() => (
     favorites.find((favorite) => favorite.id === selectedFavoriteId) || null
   ), [favorites, selectedFavoriteId]);
+
+  const posterTextPreviewMetrics = useMemo(() => (
+    selectedFavorite && draftPosterLayout
+      ? getPosterTextPreviewMetrics(selectedFavorite, draftPosterLayout)
+      : null
+  ), [draftPosterLayout, selectedFavorite]);
+
+  const posterEditorScale = posterEditorFrameWidth / SHARE_POSTER_SIZE.width;
 
   // 每句诗的节奏长度：JS长度和去空格长度的平均值。
   const charCounts = welcomeLines.map((line) => {
@@ -593,12 +790,37 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isPosterTextEditorOpen) {
+      setPosterEditorFrameWidth(0);
+      return;
+    }
+
+    const frame = posterEditorFrameRef.current;
+    if (!frame) return;
+
+    const updateFrameWidth = () => {
+      setPosterEditorFrameWidth(frame.getBoundingClientRect().width);
+    };
+
+    updateFrameWidth();
+    const resizeObserver = new ResizeObserver(updateFrameWidth);
+    resizeObserver.observe(frame);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [isPosterTextEditorOpen]);
+
   // 入场动画时间控制
   useEffect(() => {
     if (!isWelcomeFontReady) return;
     if (isSkipped) return;
 
     const timers: number[] = [];
+    isWelcomeSkipInProgressRef.current = false;
+    skipTimersRef.current.forEach(timer => clearTimeout(timer));
+    skipTimersRef.current = [];
     welcomeAnimationStartRef.current = Date.now();
     const fadeInEndTime = getAllLinesFadeInEndTime();
     const holdAfterFadeIn = WELCOME_TIMING.holdAfterFadeIn;
@@ -1285,8 +1507,11 @@ function App() {
 
   // 🎯 跳过入场动画功能
   const skipWelcomeAnimation = useCallback(() => {
+    if (isWelcomeSkipInProgressRef.current || isSkipped) return;
+
     // 只在入场诗淡入或淡出阶段可以跳过
     if (welcomePhase === 'lines' || welcomePhase === 'sliding') {
+      isWelcomeSkipInProgressRef.current = true;
       console.log('⏭️ 用户点击跳过入场动画');
       
       // 清除所有入场动画定时器
@@ -1340,6 +1565,7 @@ function App() {
       
     }
   }, [
+    isSkipped,
     welcomePhase,
     welcomeLines,
     welcomeMoveDuration,
@@ -1775,22 +2001,423 @@ function App() {
     setFavorites(nextFavorites);
     if (selectedFavoriteId === favoriteId) {
       setSelectedFavoriteId(null);
+      setIsPosterTextEditorOpen(false);
+      setDraftPosterLayout(null);
     }
   };
 
   const handleGenerateShareImage = async () => {
     if (!selectedFavorite) return;
 
+    setIsPosterTextEditorOpen(false);
+    setDraftPosterLayout(null);
     setIsGeneratingShareImage(true);
     setShareMessage('');
 
     try {
-      const image = await generateShareImage(selectedFavorite);
-      const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, image);
+      const result = await generateShareImage(selectedFavorite);
+      const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
+        shareBackgroundImage: result.backgroundImage,
+        shareLayout: result.layout,
+        shareDefaultLayout: result.layout,
+      });
       setFavorites(nextFavorites);
       setShareMessage(selectedFavorite.shareImage ? '分享图已重新生成。' : '分享图已生成。');
     } catch (error) {
       setShareMessage(error instanceof Error ? error.message : '分享图生成失败，请稍后再试。');
+    } finally {
+      setIsGeneratingShareImage(false);
+    }
+  };
+
+  const handleStartPosterTextEdit = () => {
+    if (!selectedFavorite?.shareBackgroundImage || !isPosterTextLayout(selectedFavorite.shareLayout)) return;
+
+    setDraftPosterLayout({
+      ...selectedFavorite.shareLayout,
+      fontScale: selectedFavorite.shareLayout.fontScale ?? 1,
+    });
+    setIsPosterTextEditingContent(false);
+    setIsPosterTextEditorOpen(true);
+    setShareMessage('');
+  };
+
+  const handleCancelPosterTextEdit = () => {
+    setIsPosterTextEditorOpen(false);
+    setDraftPosterLayout(null);
+    setIsPosterTextEditingContent(false);
+    posterDragRef.current = null;
+    posterPointersRef.current.clear();
+  };
+
+  const handleResetPosterTextEdit = () => {
+    const resetLayout = isPosterTextLayout(selectedFavorite?.shareDefaultLayout)
+      ? selectedFavorite.shareDefaultLayout
+      : selectedFavorite?.shareLayout;
+    if (!resetLayout || !isPosterTextLayout(resetLayout) || !selectedFavorite) return;
+
+    setDraftPosterLayout(formatPosterTextLayoutForEditing(selectedFavorite, {
+      ...resetLayout,
+      fontScale: resetLayout.fontScale ?? 1,
+    }));
+    setIsPosterTextEditingContent(false);
+    posterDragRef.current = null;
+    posterPointersRef.current.clear();
+  };
+
+  const handleDraftLayoutTextChange = (nextText: string) => {
+    if (!draftPosterLayout || !selectedFavorite) return;
+
+    const originalText = selectedFavorite.content.replace(/\n/g, '');
+    const nextTextWithoutBreaks = nextText.replace(/\n/g, '');
+    if (nextTextWithoutBreaks !== originalText) return;
+
+    setDraftPosterLayout({
+      ...draftPosterLayout,
+      text: nextText,
+    });
+  };
+
+  const clampDraftPosterLayout = (layout: PosterTextLayout): PosterTextLayout => {
+    const nextLayout: PosterTextLayout = {
+      ...layout,
+      width: clamp(layout.width, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.width),
+      height: clamp(layout.height, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.height),
+      fontScale: clamp(layout.fontScale ?? 1, 0.35, 2.8),
+    };
+
+    nextLayout.x = clamp(nextLayout.x, 0, SHARE_POSTER_SIZE.width - nextLayout.width);
+    nextLayout.y = clamp(nextLayout.y, 0, SHARE_POSTER_SIZE.height - nextLayout.height);
+
+    if (!selectedFavorite) return nextLayout;
+
+    for (let index = 0; index < 2; index += 1) {
+      const metrics = getPosterTextPreviewMetrics(selectedFavorite, nextLayout);
+      const metaBounds = getPosterMetaBounds(nextLayout, metrics, selectedFavorite);
+      const left = Math.min(nextLayout.x, metaBounds.left);
+      const top = Math.min(nextLayout.y, metaBounds.top);
+      const right = Math.max(nextLayout.x + nextLayout.width, metaBounds.right);
+      const bottom = Math.max(nextLayout.y + nextLayout.height, metaBounds.bottom);
+
+      if (left < POSTER_EDGE_PADDING) nextLayout.x += POSTER_EDGE_PADDING - left;
+      if (right > SHARE_POSTER_SIZE.width - POSTER_EDGE_PADDING) {
+        nextLayout.x -= right - (SHARE_POSTER_SIZE.width - POSTER_EDGE_PADDING);
+      }
+      if (top < POSTER_EDGE_PADDING) nextLayout.y += POSTER_EDGE_PADDING - top;
+      if (bottom > SHARE_POSTER_SIZE.height - POSTER_EDGE_PADDING) {
+        nextLayout.y -= bottom - (SHARE_POSTER_SIZE.height - POSTER_EDGE_PADDING);
+      }
+
+      nextLayout.x = clamp(nextLayout.x, 0, SHARE_POSTER_SIZE.width - nextLayout.width);
+      nextLayout.y = clamp(nextLayout.y, 0, SHARE_POSTER_SIZE.height - nextLayout.height);
+    }
+
+    return nextLayout;
+  };
+
+  const clampDraftPosterTextBoxOnly = (layout: PosterTextLayout): PosterTextLayout => ({
+    ...layout,
+    x: clamp(layout.x, 0, SHARE_POSTER_SIZE.width - Math.min(layout.width, SHARE_POSTER_SIZE.width)),
+    y: clamp(layout.y, 0, SHARE_POSTER_SIZE.height - Math.min(layout.height, SHARE_POSTER_SIZE.height)),
+    width: clamp(layout.width, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.width),
+    height: clamp(layout.height, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.height),
+    fontScale: clamp(layout.fontScale ?? 1, 0.35, 2.8),
+  });
+
+  const handleTogglePosterTextDirection = () => {
+    if (!draftPosterLayout || !selectedFavorite) return;
+
+    const isVertical = draftPosterLayout.kind.includes('vertical');
+    const nextKind: PosterLayoutKind = isVertical
+      ? 'bottom-left'
+      : 'upper-left-vertical';
+    const nextSize = POSTER_EDITOR_LAYOUT_SIZES[nextKind];
+
+    setDraftPosterLayout(clampDraftPosterLayout(
+      createPosterLayoutForKind(selectedFavorite, draftPosterLayout, nextKind, nextSize)
+    ));
+  };
+
+  const handleTogglePosterVerticalReadingDirection = () => {
+    if (!draftPosterLayout || !selectedFavorite || !draftPosterLayout.kind.includes('vertical')) return;
+
+    const nextKind = draftPosterLayout.kind === 'upper-left-vertical'
+      ? 'right-vertical'
+      : 'upper-left-vertical';
+
+    setDraftPosterLayout(clampDraftPosterLayout(
+      createPosterLayoutForKind(selectedFavorite, draftPosterLayout, nextKind, {
+        width: draftPosterLayout.width,
+        height: draftPosterLayout.height,
+      })
+    ));
+  };
+
+  const applyPosterEditorBoxStyle = (layout: PosterTextLayout) => {
+    if (!posterEditorBoxRef.current) return;
+
+    posterEditorBoxRef.current.style.left = `${(layout.x / SHARE_POSTER_SIZE.width) * 100}%`;
+    posterEditorBoxRef.current.style.top = `${(layout.y / SHARE_POSTER_SIZE.height) * 100}%`;
+    posterEditorBoxRef.current.style.width = `${(layout.width / SHARE_POSTER_SIZE.width) * 100}%`;
+    posterEditorBoxRef.current.style.height = `${(layout.height / SHARE_POSTER_SIZE.height) * 100}%`;
+  };
+
+  const getPosterEditorLayoutFromPixels = (
+    frameRect: DOMRect,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    baseLayout: PosterTextLayout,
+    constrainMetaBounds = true
+  ): PosterTextLayout => {
+    const startWidth = (baseLayout.width / SHARE_POSTER_SIZE.width) * frameRect.width;
+    const startHeight = (baseLayout.height / SHARE_POSTER_SIZE.height) * frameRect.height;
+    const sizeScale = Math.max(width / Math.max(1, startWidth), height / Math.max(1, startHeight));
+    const nextLayout = {
+      ...baseLayout,
+      x: (left / frameRect.width) * SHARE_POSTER_SIZE.width,
+      y: (top / frameRect.height) * SHARE_POSTER_SIZE.height,
+      width: (width / frameRect.width) * SHARE_POSTER_SIZE.width,
+      height: (height / frameRect.height) * SHARE_POSTER_SIZE.height,
+      fontScale: (baseLayout.fontScale ?? 1) * sizeScale,
+    };
+
+    return constrainMetaBounds
+      ? clampDraftPosterLayout(nextLayout)
+      : clampDraftPosterTextBoxOnly(nextLayout);
+  };
+
+  const startPosterPinchGesture = (event: PointerEvent<HTMLDivElement>) => {
+    if (!draftPosterLayout || !posterEditorFrameRef.current) return false;
+
+    const pointers = [...posterPointersRef.current.values()];
+    if (pointers.length < 2) return false;
+
+    const [firstPointer, secondPointer] = pointers;
+    const startDistance = Math.hypot(firstPointer.x - secondPointer.x, firstPointer.y - secondPointer.y);
+    if (!startDistance) return false;
+
+    posterDragRef.current = {
+      pointerId: event.pointerId,
+      mode: 'pinch',
+      offsetX: 0,
+      offsetY: 0,
+      startX: (firstPointer.x + secondPointer.x) / 2,
+      startY: (firstPointer.y + secondPointer.y) / 2,
+      startDistance,
+      layout: { ...draftPosterLayout },
+    };
+    return true;
+  };
+
+  const handlePosterEditorPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!draftPosterLayout || !posterEditorFrameRef.current || !posterEditorBoxRef.current) return;
+
+    posterPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (startPosterPinchGesture(event)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    if (target.closest('.poster-editor-button')) return;
+    if (isPosterTextEditingContent && target.closest('.poster-text-editor')) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const boxRect = posterEditorBoxRef.current.getBoundingClientRect();
+    const handle = (target.dataset.posterResizeHandle as PosterResizeHandle | undefined)
+      || detectPosterResizeHandle(boxRect, event.clientX, event.clientY);
+    if (handle) event.preventDefault();
+    posterDragRef.current = {
+      pointerId: event.pointerId,
+      mode: handle ? 'resize' : 'move',
+      handle,
+      offsetX: event.clientX - boxRect.left,
+      offsetY: event.clientY - boxRect.top,
+      startX: event.clientX,
+      startY: event.clientY,
+      layout: { ...draftPosterLayout },
+    };
+  };
+
+  const handlePosterEditorPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    posterPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (
+      !posterDragRef.current ||
+      !posterEditorFrameRef.current ||
+      !posterEditorBoxRef.current
+    ) {
+      return;
+    }
+
+    const frameRect = posterEditorFrameRef.current.getBoundingClientRect();
+    const startLayout = posterDragRef.current.layout;
+    const startLeft = (startLayout.x / SHARE_POSTER_SIZE.width) * frameRect.width;
+    const startTop = (startLayout.y / SHARE_POSTER_SIZE.height) * frameRect.height;
+    const startWidth = (startLayout.width / SHARE_POSTER_SIZE.width) * frameRect.width;
+    const startHeight = (startLayout.height / SHARE_POSTER_SIZE.height) * frameRect.height;
+    let nextLeft = startLeft;
+    let nextTop = startTop;
+    let nextWidth = startWidth;
+    let nextHeight = startHeight;
+
+    if (posterDragRef.current.mode === 'pinch') {
+      const pointers = [...posterPointersRef.current.values()];
+      if (pointers.length < 2 || !posterDragRef.current.startDistance) return;
+
+      const [firstPointer, secondPointer] = pointers;
+      const distance = Math.hypot(firstPointer.x - secondPointer.x, firstPointer.y - secondPointer.y);
+      const centerX = startLeft + startWidth / 2;
+      const centerY = startTop + startHeight / 2;
+      const minWidth = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.width) * frameRect.width;
+      const minHeight = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.height) * frameRect.height;
+      const minScale = Math.max(minWidth / startWidth, minHeight / startHeight);
+      const rawScale = distance / posterDragRef.current.startDistance;
+      const maxScale = getPosterResizeMaxScale(
+        frameRect,
+        startWidth,
+        startHeight,
+        centerX,
+        centerY,
+        false,
+        false,
+        false,
+        false
+      );
+      const scale = clamp(rawScale, minScale, maxScale);
+      nextWidth = startWidth * scale;
+      nextHeight = startHeight * scale;
+      nextLeft = clamp(centerX - nextWidth / 2, 0, frameRect.width - nextWidth);
+      nextTop = clamp(centerY - nextHeight / 2, 0, frameRect.height - nextHeight);
+    } else if (posterDragRef.current.mode === 'resize') {
+      const minWidth = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.width) * frameRect.width;
+      const minHeight = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.height) * frameRect.height;
+      const handle = posterDragRef.current.handle || 'bottom-right';
+      const isLeftHandle = handle.includes('left');
+      const isTopHandle = handle.includes('top');
+      const isRightHandle = handle.includes('right');
+      const isBottomHandle = handle.includes('bottom');
+      const anchorX = isLeftHandle ? startLeft + startWidth : isRightHandle ? startLeft : startLeft + startWidth / 2;
+      const anchorY = isTopHandle ? startTop + startHeight : isBottomHandle ? startTop : startTop + startHeight / 2;
+      const pointerX = event.clientX - frameRect.left;
+      const pointerY = event.clientY - frameRect.top;
+      const minScale = Math.max(minWidth / startWidth, minHeight / startHeight);
+      let rawScale = 1;
+
+      if ((isLeftHandle || isRightHandle) && (isTopHandle || isBottomHandle)) {
+        const startHandleX = isLeftHandle ? startLeft : startLeft + startWidth;
+        const startHandleY = isTopHandle ? startTop : startTop + startHeight;
+        const baseX = startHandleX - anchorX;
+        const baseY = startHandleY - anchorY;
+        const pointerDeltaX = pointerX - anchorX;
+        const pointerDeltaY = pointerY - anchorY;
+        const baseLengthSquared = baseX * baseX + baseY * baseY;
+        rawScale = baseLengthSquared > 0
+          ? (pointerDeltaX * baseX + pointerDeltaY * baseY) / baseLengthSquared
+          : 1;
+      } else if (isRightHandle) {
+        rawScale = (pointerX - anchorX) / Math.max(1, startWidth);
+      } else if (isLeftHandle) {
+        rawScale = (anchorX - pointerX) / Math.max(1, startWidth);
+      } else if (isBottomHandle) {
+        rawScale = (pointerY - anchorY) / Math.max(1, startHeight);
+      } else if (isTopHandle) {
+        rawScale = (anchorY - pointerY) / Math.max(1, startHeight);
+      }
+
+      const maxScale = getPosterResizeMaxScale(
+        frameRect,
+        startWidth,
+        startHeight,
+        anchorX,
+        anchorY,
+        isLeftHandle,
+        isTopHandle,
+        isRightHandle,
+        isBottomHandle
+      );
+      const scale = clamp(rawScale, minScale, maxScale);
+
+      nextWidth = startWidth * scale;
+      nextHeight = startHeight * scale;
+      nextLeft = isLeftHandle ? anchorX - nextWidth : isRightHandle ? anchorX : anchorX - nextWidth / 2;
+      nextTop = isTopHandle ? anchorY - nextHeight : isBottomHandle ? anchorY : anchorY - nextHeight / 2;
+    } else if (posterDragRef.current.pointerId === event.pointerId) {
+      nextLeft = clamp(
+        event.clientX - frameRect.left - posterDragRef.current.offsetX,
+        0,
+        Math.max(0, frameRect.width - startWidth)
+      );
+      nextTop = clamp(
+        event.clientY - frameRect.top - posterDragRef.current.offsetY,
+        0,
+        Math.max(0, frameRect.height - startHeight)
+      );
+    }
+
+    const nextLayout = getPosterEditorLayoutFromPixels(
+      frameRect,
+      nextLeft,
+      nextTop,
+      nextWidth,
+      nextHeight,
+      startLayout,
+      posterDragRef.current.mode === 'move'
+    );
+
+    posterDragRef.current.layout = nextLayout;
+    applyPosterEditorBoxStyle(nextLayout);
+    setDraftPosterLayout(nextLayout);
+  };
+
+  const handlePosterEditorPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    posterPointersRef.current.delete(event.pointerId);
+
+    if (!posterDragRef.current) return;
+    if (posterDragRef.current.mode !== 'pinch' && posterDragRef.current.pointerId !== event.pointerId) return;
+
+    setDraftPosterLayout(posterDragRef.current.layout);
+    posterDragRef.current = null;
+  };
+
+  const handleEnablePosterTextContentEdit = () => {
+    setIsPosterTextEditingContent(true);
+    requestAnimationFrame(() => {
+      posterEditorTextRef.current?.focus();
+      posterEditorTextRef.current?.setSelectionRange(
+        posterEditorTextRef.current.value.length,
+        posterEditorTextRef.current.value.length
+      );
+    });
+  };
+
+  const handleSavePosterTextEdit = async () => {
+    if (!selectedFavorite?.shareBackgroundImage || !draftPosterLayout) return;
+
+    setIsGeneratingShareImage(true);
+    setShareMessage('');
+
+    try {
+      const finalLayout = clampDraftPosterLayout(draftPosterLayout);
+      const result = await regenerateShareImageWithLayout(
+        selectedFavorite,
+        selectedFavorite.shareBackgroundImage,
+        finalLayout
+      );
+      const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
+        shareBackgroundImage: result.backgroundImage,
+        shareLayout: result.layout,
+      });
+      setFavorites(nextFavorites);
+      setIsPosterTextEditorOpen(false);
+      setDraftPosterLayout(null);
+      setIsPosterTextEditingContent(false);
+      setShareMessage('文字位置已更新。');
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : '文字位置更新失败，请稍后再试。');
     } finally {
       setIsGeneratingShareImage(false);
     }
@@ -2006,10 +2633,11 @@ function App() {
       // 调用服务端 AI API
       const poem = await generatePoem(keyword, mood);
       console.log('✅ 诗句生成 API 返回成功:', poem);
+      const normalizedContent = normalizePoemContent(poem.content);
       
       // 展示诗句
       setPoemData({
-        content: poem.content,
+        content: normalizedContent,
         poem_title: poem.poem_title,
         author: poem.author,
       });
@@ -2017,7 +2645,7 @@ function App() {
 
       // 异步保存到数据库（不阻塞 UI）
       savePoemToDatabase(
-        poem.content,
+        normalizedContent,
         poem.poem_title,
         poem.author,
         keyword
@@ -2033,8 +2661,9 @@ function App() {
       const fallbackPoem = await getRandomPoemFromDatabase();
 
       if (fallbackPoem) {
+        const normalizedContent = normalizePoemContent(fallbackPoem.content);
         setPoemData({
-          content: fallbackPoem.content,
+          content: normalizedContent,
           poem_title: fallbackPoem.poem_title || '未知',
           author: fallbackPoem.author || '佚名',
         });
@@ -2363,6 +2992,8 @@ function App() {
                     onClick={() => {
                       setSelectedFavoriteId(favorite.id);
                       setShareMessage('');
+                      setIsPosterTextEditorOpen(false);
+                      setDraftPosterLayout(null);
                     }}
                   >
                     <span>{favorite.content}</span>
@@ -2381,6 +3012,8 @@ function App() {
                     onClick={() => {
                       setSelectedFavoriteId(null);
                       setShareMessage('');
+                      setIsPosterTextEditorOpen(false);
+                      setDraftPosterLayout(null);
                     }}
                   >
                     ← 返回
@@ -2395,14 +3028,176 @@ function App() {
                 </div>
 
                 <div className="favorite-poem">
-                  <p>{selectedFavorite.content}</p>
+                  <div className="favorite-poem-lines">
+                    {getPoemDisplayLines(selectedFavorite.content).map((line, index) => (
+                      <p key={`${line}-${index}`}>{line}</p>
+                    ))}
+                  </div>
                   <span>《{selectedFavorite.poem_title}》 · {selectedFavorite.author}</span>
                 </div>
 
-                {isGeneratingShareImage ? (
-                  <div className="share-placeholder share-loading">
-                    <span className="share-spinner" aria-hidden="true" />
-                    <span>正在生成分享图</span>
+                {isPosterTextEditorOpen && draftPosterLayout && selectedFavorite.shareBackgroundImage ? (
+                  <div
+                    className="poster-editor-frame"
+                    ref={posterEditorFrameRef}
+                    onPointerDown={handlePosterEditorPointerDown}
+                    onPointerMove={handlePosterEditorPointerMove}
+                    onPointerUp={handlePosterEditorPointerUp}
+                    onPointerCancel={handlePosterEditorPointerUp}
+                  >
+                    <img
+                      src={selectedFavorite.shareBackgroundImage}
+                      alt="诗句分享图背景"
+                      className="poster-editor-background"
+                    />
+                    <div
+                      ref={posterEditorBoxRef}
+                      className={`poster-text-box poster-text-box-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} poster-text-box-${draftPosterLayout.kind} ${isPosterTextEditingContent ? 'poster-text-box-editing' : ''}`}
+                      style={{
+                        left: `${(draftPosterLayout.x / SHARE_POSTER_SIZE.width) * 100}%`,
+                        top: `${(draftPosterLayout.y / SHARE_POSTER_SIZE.height) * 100}%`,
+                        width: `${(draftPosterLayout.width / SHARE_POSTER_SIZE.width) * 100}%`,
+                        height: `${(draftPosterLayout.height / SHARE_POSTER_SIZE.height) * 100}%`,
+                      }}
+                      onDoubleClick={handleEnablePosterTextContentEdit}
+                    >
+                      <textarea
+                        ref={posterEditorTextRef}
+                        className={`poster-text-editor poster-text-editor-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} ${isPosterTextEditingContent ? 'poster-text-editor-editing' : ''}`}
+                        value={draftPosterLayout.text}
+                        onChange={(event) => handleDraftLayoutTextChange(event.target.value)}
+                        onBlur={() => setIsPosterTextEditingContent(false)}
+                        onPointerDown={(event) => {
+                          if (isPosterTextEditingContent) event.stopPropagation();
+                        }}
+                        spellCheck={false}
+                        wrap="off"
+                        readOnly={!isPosterTextEditingContent}
+                        style={{
+                          fontSize: posterTextPreviewMetrics && posterEditorScale
+                            ? `${posterTextPreviewMetrics.fontSize * posterEditorScale}px`
+                            : undefined,
+                          lineHeight: posterTextPreviewMetrics && posterEditorScale
+                            ? `${posterTextPreviewMetrics.lineHeight * posterEditorScale}px`
+                            : undefined,
+                          textAlign: draftPosterLayout.kind.includes('vertical')
+                            ? 'start'
+                            : posterTextPreviewMetrics?.textAlign,
+                        }}
+                        aria-label="调整诗句断句"
+                      />
+                      {POSTER_RESIZE_HANDLES.map((handle) => (
+                        <span
+                          key={handle}
+                          className={`poster-resize-handle poster-resize-handle-${handle}`}
+                          data-poster-resize-handle={handle}
+                          aria-hidden="true"
+                        />
+                      ))}
+                    </div>
+                    <div className="poster-editor-controls">
+                      {draftPosterLayout.kind.includes('vertical') && (
+                        <button
+                          type="button"
+                          className="poster-editor-button poster-editor-icon-button"
+                          onClick={handleTogglePosterVerticalReadingDirection}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          disabled={isGeneratingShareImage}
+                          aria-label={draftPosterLayout.kind === 'upper-left-vertical' ? '切换为右往左读' : '切换为左往右读'}
+                          title={draftPosterLayout.kind === 'upper-left-vertical' ? '切换为右往左读' : '切换为左往右读'}
+                        >
+                          {draftPosterLayout.kind === 'upper-left-vertical' ? '→' : '←'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="poster-editor-button poster-editor-icon-button"
+                        onClick={handleTogglePosterTextDirection}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        disabled={isGeneratingShareImage || !draftPosterLayout}
+                        aria-label={draftPosterLayout.kind.includes('vertical') ? '切换为横排' : '切换为竖排'}
+                        title={draftPosterLayout.kind.includes('vertical') ? '切换为横排' : '切换为竖排'}
+                      >
+                        {draftPosterLayout.kind.includes('vertical') ? '↔' : '↕'}
+                      </button>
+                    </div>
+                    <div className="poster-editor-actions">
+                      <button
+                        type="button"
+                        className="poster-editor-button poster-editor-icon-button"
+                        onClick={handleSavePosterTextEdit}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        disabled={isGeneratingShareImage || !draftPosterLayout}
+                        aria-label="完成文字调整"
+                        title="完成"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        className="poster-editor-button poster-editor-icon-button"
+                        onClick={handleResetPosterTextEdit}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        disabled={isGeneratingShareImage || !draftPosterLayout}
+                        aria-label="还原文字调整"
+                        title="还原"
+                      >
+                        ↺
+                      </button>
+                      <button
+                        type="button"
+                        className="poster-editor-button poster-editor-icon-button"
+                        onClick={handleCancelPosterTextEdit}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        disabled={isGeneratingShareImage}
+                        aria-label="取消文字调整"
+                        title="取消"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    {posterTextPreviewMetrics && (
+                      <div
+                        className={`poster-text-meta poster-text-meta-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} poster-text-meta-${draftPosterLayout.kind}`}
+                        style={{
+                          ...getPosterMetaStyle(draftPosterLayout, posterTextPreviewMetrics, selectedFavorite),
+                          fontSize: posterEditorScale
+                            ? `${posterTextPreviewMetrics.metaFontSize * posterEditorScale}px`
+                            : undefined,
+                          lineHeight: posterEditorScale
+                            ? `${posterTextPreviewMetrics.metaLineHeight * posterEditorScale}px`
+                            : undefined,
+                          textAlign: draftPosterLayout.kind.includes('vertical')
+                            ? posterTextPreviewMetrics.textAlign
+                            : 'right',
+                        }}
+                      >
+                        {draftPosterLayout.kind.includes('vertical') ? (
+                          <>
+                            <span>《{selectedFavorite.poem_title}》</span>
+                            <span>{selectedFavorite.author}</span>
+                          </>
+                        ) : (
+                          <>《{selectedFavorite.poem_title}》 · {selectedFavorite.author}</>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : isGeneratingShareImage ? (
+                  <div className="share-preview-frame">
+                    {selectedFavorite.shareImage ? (
+                      <img
+                        src={selectedFavorite.shareImage}
+                        alt="上一张诗句分享图"
+                        className="share-preview"
+                      />
+                    ) : (
+                      <div className="share-placeholder" />
+                    )}
+                    <div className="share-loading" aria-live="polite">
+                      <span className="share-spinner" aria-hidden="true" />
+                      <span>正在生成分享图</span>
+                    </div>
                   </div>
                 ) : selectedFavorite.shareImage ? (
                   <img
@@ -2417,30 +3212,48 @@ function App() {
                 )}
 
                 <div className="share-actions">
-                  <button
-                    type="button"
-                    onClick={handleGenerateShareImage}
-                    disabled={isGeneratingShareImage}
-                  >
-                    {isGeneratingShareImage ? '生成中...' : selectedFavorite.shareImage ? '重新生成图' : '生成分享图'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDownloadShareImage}
-                    disabled={isGeneratingShareImage || !selectedFavorite.shareImage}
-                  >
-                    保存 JPG
-                  </button>
-                  <button type="button" onClick={handleCopyShareText}>
-                    复制文案
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSystemShare}
-                    disabled={isGeneratingShareImage || !selectedFavorite.shareImage}
-                  >
-                    分享
-                  </button>
+                  <div className="share-action-row share-action-row-primary">
+                    <button
+                      type="button"
+                      onClick={handleGenerateShareImage}
+                      disabled={isGeneratingShareImage}
+                    >
+                      {isGeneratingShareImage ? '生成中...' : selectedFavorite.shareImage ? '重新生成图' : '生成分享图片'}
+                    </button>
+                    <button type="button" onClick={handleCopyShareText}>
+                      复制文案
+                    </button>
+                  </div>
+                  {selectedFavorite.shareImage && (
+                    <div className="share-action-row share-action-row-secondary">
+                      <button
+                        type="button"
+                        onClick={handleDownloadShareImage}
+                        disabled={isGeneratingShareImage || isPosterTextEditorOpen}
+                      >
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSystemShare}
+                        disabled={isGeneratingShareImage || isPosterTextEditorOpen}
+                      >
+                        分享
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStartPosterTextEdit}
+                        disabled={
+                          isPosterTextEditorOpen ||
+                          isGeneratingShareImage ||
+                          !selectedFavorite.shareBackgroundImage ||
+                          !isPosterTextLayout(selectedFavorite.shareLayout)
+                        }
+                      >
+                        调整
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="favorite-detail-footer">
@@ -2590,8 +3403,8 @@ function App() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* 诗句内容 - 左对齐，一句一行 */}
-            <div className="text-2xl text-white mb-4 leading-relaxed text-left">
-              {poemData.content.split(/[，。、；！？]/).filter(line => line.trim()).map((line, index) => (
+            <div className="poem-display-lines text-2xl text-white mb-4 leading-relaxed text-left">
+              {getPoemDisplayLines(poemData.content).map((line, index) => (
                 <p key={index}>{line}</p>
               ))}
             </div>
@@ -2699,12 +3512,17 @@ function App() {
       {isLoading && (
         <div className="fixed inset-0 flex items-center justify-center z-40 pointer-events-none">
           <div 
-            className="text-gold animate-pulse"
+            className="poem-loading-text text-gold"
             style={{
               fontSize: isSmallMobile ? '1.4rem' : isMobile ? '1.75rem' : '1.5rem'
             }}
           >
-            诗句正在向你跑来...
+            诗句正在向你奔来
+            <span className="poem-loading-dots" aria-hidden="true">
+              <span>.</span>
+              <span>.</span>
+              <span>.</span>
+            </span>
           </div>
         </div>
       )}

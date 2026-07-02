@@ -39,7 +39,7 @@ function buildPoemPrompt(moodName: string, shouldMatchMood: boolean): string {
 
   return `${mode}
 本次偏好：${language}；${era}；${style}；${fame}。
-真实诗句。必须有明确作者和篇名，不能佚名/未知。中文英文都可以；英文必须是一句完整短诗句。
+真实诗句。必须有明确作者和篇名，不能佚名/匿名/未知。中文英文都可以；英文必须是一句完整短诗句。
 不要返回被截断的半句；英文不能以连字符、破折号、省略号或未闭合标点结尾。
 诗句内容尽量不超过80个字符。
 返回JSON：{"content":"","poem_title":"","author":""}`;
@@ -57,7 +57,7 @@ function validatePoemData(poemData: PoemData): PoemData {
     throw new Error('返回数据不完整');
   }
 
-  if (/^(未知|佚名|无)$/i.test(content) || content.length < 2) {
+  if (/^(未知|佚名|匿名|无)$/i.test(content) || content.length < 2) {
     throw new Error('诗句内容无效');
   }
 
@@ -65,11 +65,11 @@ function validatePoemData(poemData: PoemData): PoemData {
     throw new Error('诗句疑似被截断');
   }
 
-  if (/^(未知|佚名|无|anonymous|unknown)$/i.test(poemTitle)) {
+  if (/^(未知|佚名|匿名|无|anonymous|unknown)$/i.test(poemTitle)) {
     throw new Error('诗句篇目无效');
   }
 
-  if (/^(未知|佚名|无|anonymous|unknown)$/i.test(author)) {
+  if (/^(未知|佚名|匿名|无|anonymous|unknown)$/i.test(author)) {
     throw new Error('诗句作者无效');
   }
 

@@ -6,13 +6,27 @@ export interface FavoritePoem {
   createdAt: string;
   shareImage?: string;
   shareImageCreatedAt?: string;
+  shareBackgroundImage?: string;
+  shareLayout?: unknown;
+  shareDefaultLayout?: unknown;
 }
 
 const FAVORITES_KEY = 'blindpoem.favorites.v1';
 const MAX_FAVORITES = 60;
 
+function normalizeFavoriteContent(content: string): string {
+  const lines = content
+    .replace(/[\/／\\|]+/g, '\n')
+    .replace(/[，。、；！？,.!?;:：]+/g, '\n')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[“”"‘’'《》〈〉「」『』（）()【】[\]{}]/g, '').trim())
+    .filter(Boolean);
+
+  return lines.join('\n') || content.trim();
+}
+
 export function getFavoriteId(content: string, poemTitle: string, author: string): string {
-  return `${content.trim()}|${poemTitle.trim()}|${author.trim()}`;
+  return `${normalizeFavoriteContent(content)}|${poemTitle.trim()}|${author.trim()}`;
 }
 
 function parseFavorites(raw: string | null): FavoritePoem[] {
@@ -21,7 +35,13 @@ function parseFavorites(raw: string | null): FavoritePoem[] {
   try {
     const favorites = JSON.parse(raw) as FavoritePoem[];
     return Array.isArray(favorites)
-      ? favorites.filter((favorite) => favorite?.id && favorite.content)
+      ? favorites
+          .filter((favorite) => favorite?.id && favorite.content)
+          .map((favorite) => ({
+            ...favorite,
+            id: getFavoriteId(favorite.content, favorite.poem_title || '', favorite.author || ''),
+            content: normalizeFavoriteContent(favorite.content),
+          }))
       : [];
   } catch (error) {
     console.warn('⚠️ 读取收藏夹失败：', error);
@@ -51,11 +71,14 @@ export function addFavorite(poem: {
 }): FavoritePoem[] {
   const id = getFavoriteId(poem.content, poem.poem_title, poem.author);
   const existingFavorites = readFavorites();
-  const existingFavorite = existingFavorites.find((favorite) => favorite.id === id);
+  const existingFavorite = existingFavorites.find((favorite) => (
+    favorite.id === id ||
+    getFavoriteId(favorite.content, favorite.poem_title, favorite.author) === id
+  ));
   const nextFavorite: FavoritePoem = {
     ...existingFavorite,
     id,
-    content: poem.content,
+    content: normalizeFavoriteContent(poem.content),
     poem_title: poem.poem_title,
     author: poem.author,
     createdAt: existingFavorite?.createdAt || new Date().toISOString(),
@@ -71,7 +94,11 @@ export function removeFavorite(favoriteId: string): FavoritePoem[] {
   return writeFavorites(readFavorites().filter((favorite) => favorite.id !== favoriteId));
 }
 
-export function updateFavoriteShareImage(favoriteId: string, shareImage: string): FavoritePoem[] {
+export function updateFavoriteShareImage(
+  favoriteId: string,
+  shareImage: string,
+  metadata: Pick<FavoritePoem, 'shareBackgroundImage' | 'shareLayout'> & Partial<Pick<FavoritePoem, 'shareDefaultLayout'>> = {}
+): FavoritePoem[] {
   return writeFavorites(
     readFavorites().map((favorite) => (
       favorite.id === favoriteId
@@ -79,6 +106,7 @@ export function updateFavoriteShareImage(favoriteId: string, shareImage: string)
             ...favorite,
             shareImage,
             shareImageCreatedAt: new Date().toISOString(),
+            ...metadata,
           }
         : favorite
     ))
