@@ -222,6 +222,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function clampScale(value: number, min: number, max: number): number {
+  if (max < min) return max;
+  return clamp(value, min, max);
+}
+
 function detectPosterResizeHandle(
   boxRect: DOMRect,
   clientX: number,
@@ -311,6 +316,8 @@ const POSTER_RESIZE_HANDLES: PosterResizeHandle[] = [
 const POSTER_META_GAP = 24;
 const POSTER_EDGE_PADDING = 18;
 const POSTER_EDITOR_MIN_BOX_SIZE = 36;
+const POSTER_EDITOR_MIN_FONT_SCALE = 0.35;
+const POSTER_EDITOR_MAX_FONT_SCALE = 2.8;
 
 type PosterEditorIconName = 'arrow-left' | 'arrow-right' | 'layout-horizontal' | 'layout-vertical' | 'check' | 'reset' | 'close';
 
@@ -2150,7 +2157,7 @@ function App() {
       ...layout,
       width: clamp(layout.width, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.width),
       height: clamp(layout.height, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.height),
-      fontScale: clamp(layout.fontScale ?? 1, 0.35, 2.8),
+      fontScale: clamp(layout.fontScale ?? 1, POSTER_EDITOR_MIN_FONT_SCALE, POSTER_EDITOR_MAX_FONT_SCALE),
     };
 
     nextLayout.x = clamp(nextLayout.x, 0, SHARE_POSTER_SIZE.width - nextLayout.width);
@@ -2188,7 +2195,7 @@ function App() {
     y: clamp(layout.y, 0, SHARE_POSTER_SIZE.height - Math.min(layout.height, SHARE_POSTER_SIZE.height)),
     width: clamp(layout.width, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.width),
     height: clamp(layout.height, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.height),
-    fontScale: clamp(layout.fontScale ?? 1, 0.35, 2.8),
+    fontScale: clamp(layout.fontScale ?? 1, POSTER_EDITOR_MIN_FONT_SCALE, POSTER_EDITOR_MAX_FONT_SCALE),
   });
 
   const handleTogglePosterTextDirection = () => {
@@ -2240,14 +2247,20 @@ function App() {
   ): PosterTextLayout => {
     const startWidth = (baseLayout.width / SHARE_POSTER_SIZE.width) * frameRect.width;
     const startHeight = (baseLayout.height / SHARE_POSTER_SIZE.height) * frameRect.height;
-    const sizeScale = Math.max(width / Math.max(1, startWidth), height / Math.max(1, startHeight));
+    const baseFontScale = baseLayout.fontScale ?? 1;
+    const minFontSizeScale = POSTER_EDITOR_MIN_FONT_SCALE / Math.max(0.01, baseFontScale);
+    const maxFontSizeScale = POSTER_EDITOR_MAX_FONT_SCALE / Math.max(0.01, baseFontScale);
+    const rawSizeScale = Math.max(width / Math.max(1, startWidth), height / Math.max(1, startHeight));
+    const sizeScale = clampScale(rawSizeScale, minFontSizeScale, maxFontSizeScale);
+    const scaledWidth = startWidth * sizeScale;
+    const scaledHeight = startHeight * sizeScale;
     const nextLayout = {
       ...baseLayout,
       x: (left / frameRect.width) * SHARE_POSTER_SIZE.width,
       y: (top / frameRect.height) * SHARE_POSTER_SIZE.height,
-      width: (width / frameRect.width) * SHARE_POSTER_SIZE.width,
-      height: (height / frameRect.height) * SHARE_POSTER_SIZE.height,
-      fontScale: (baseLayout.fontScale ?? 1) * sizeScale,
+      width: (scaledWidth / frameRect.width) * SHARE_POSTER_SIZE.width,
+      height: (scaledHeight / frameRect.height) * SHARE_POSTER_SIZE.height,
+      fontScale: baseFontScale * sizeScale,
     };
 
     return constrainMetaBounds
@@ -2347,21 +2360,27 @@ function App() {
       const startCenterY = startTop + startHeight / 2;
       const minWidth = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.width) * frameRect.width;
       const minHeight = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.height) * frameRect.height;
-      const minScale = Math.max(minWidth / startWidth, minHeight / startHeight);
+      const baseFontScale = startLayout.fontScale ?? 1;
+      const minFontSizeScale = POSTER_EDITOR_MIN_FONT_SCALE / Math.max(0.01, baseFontScale);
+      const maxFontSizeScale = POSTER_EDITOR_MAX_FONT_SCALE / Math.max(0.01, baseFontScale);
+      const minScale = Math.max(minWidth / startWidth, minHeight / startHeight, minFontSizeScale);
       const rawScale = distance / posterDragRef.current.startDistance;
       const softenedScale = 1 + (rawScale - 1) * 0.58;
-      const maxScale = getPosterResizeMaxScale(
-        frameRect,
-        startWidth,
-        startHeight,
-        gestureStartX,
-        gestureStartY,
-        false,
-        false,
-        false,
-        false
+      const maxScale = Math.min(
+        maxFontSizeScale,
+        getPosterResizeMaxScale(
+          frameRect,
+          startWidth,
+          startHeight,
+          gestureStartX,
+          gestureStartY,
+          false,
+          false,
+          false,
+          false
+        )
       );
-      const scale = clamp(softenedScale, minScale, maxScale);
+      const scale = clampScale(softenedScale, minScale, maxScale);
       nextWidth = startWidth * scale;
       nextHeight = startHeight * scale;
       nextLeft = clamp(
@@ -2388,7 +2407,10 @@ function App() {
       const anchorY = isTopHandle ? startTop + startHeight : isBottomHandle ? startTop : startTop + startHeight / 2;
       const pointerX = event.clientX - frameRect.left;
       const pointerY = event.clientY - frameRect.top;
-      const minScale = Math.max(minWidth / startWidth, minHeight / startHeight);
+      const baseFontScale = startLayout.fontScale ?? 1;
+      const minFontSizeScale = POSTER_EDITOR_MIN_FONT_SCALE / Math.max(0.01, baseFontScale);
+      const maxFontSizeScale = POSTER_EDITOR_MAX_FONT_SCALE / Math.max(0.01, baseFontScale);
+      const minScale = Math.max(minWidth / startWidth, minHeight / startHeight, minFontSizeScale);
       let rawScale = 1;
 
       if ((isLeftHandle || isRightHandle) && (isTopHandle || isBottomHandle)) {
@@ -2412,18 +2434,21 @@ function App() {
         rawScale = (anchorY - pointerY) / Math.max(1, startHeight);
       }
 
-      const maxScale = getPosterResizeMaxScale(
-        frameRect,
-        startWidth,
-        startHeight,
-        anchorX,
-        anchorY,
-        isLeftHandle,
-        isTopHandle,
-        isRightHandle,
-        isBottomHandle
+      const maxScale = Math.min(
+        maxFontSizeScale,
+        getPosterResizeMaxScale(
+          frameRect,
+          startWidth,
+          startHeight,
+          anchorX,
+          anchorY,
+          isLeftHandle,
+          isTopHandle,
+          isRightHandle,
+          isBottomHandle
+        )
       );
-      const scale = clamp(rawScale, minScale, maxScale);
+      const scale = clampScale(rawScale, minScale, maxScale);
 
       nextWidth = startWidth * scale;
       nextHeight = startHeight * scale;
