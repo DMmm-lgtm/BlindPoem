@@ -625,6 +625,7 @@ function App() {
   const posterEditorTextRef = useRef<HTMLTextAreaElement | null>(null);
   const posterDragRef = useRef<PosterEditorGesture | null>(null);
   const posterPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const sharePreviewRestoreAttemptsRef = useRef<Set<string>>(new Set());
 
   type StarParticle = {
     id: string;
@@ -866,6 +867,59 @@ function App() {
   useEffect(() => {
     setFavorites(readFavorites());
   }, []);
+
+  useEffect(() => {
+    if (
+      !selectedFavorite ||
+      selectedFavorite.shareImage ||
+      !selectedFavorite.shareBackgroundImage ||
+      !isPosterTextLayout(selectedFavorite.shareLayout) ||
+      sharePreviewRestoreAttemptsRef.current.has(selectedFavorite.id) ||
+      isGeneratingShareImage
+    ) {
+      return;
+    }
+
+    let isCancelled = false;
+    const backgroundImage = selectedFavorite.shareBackgroundImage;
+    const shareLayout = selectedFavorite.shareLayout;
+    sharePreviewRestoreAttemptsRef.current.add(selectedFavorite.id);
+
+    const restoreSharePreview = async () => {
+      setIsGeneratingShareImage(true);
+
+      try {
+        const result = await regenerateShareImageWithLayout(
+          selectedFavorite,
+          backgroundImage,
+          shareLayout
+        );
+
+        if (isCancelled) return;
+
+        const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
+          shareBackgroundImage: result.backgroundImage,
+          shareBackgroundSource: result.backgroundSource,
+          shareLayout: result.layout,
+        }, favorites);
+        setFavorites(nextFavorites);
+      } catch (error) {
+        if (!isCancelled) {
+          console.warn('⚠️ 恢复分享图预览失败：', error);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsGeneratingShareImage(false);
+        }
+      }
+    };
+
+    void restoreSharePreview();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [favorites, isGeneratingShareImage, selectedFavorite]);
 
   useEffect(() => {
     setIsLoved(Boolean(currentFavoriteId && favorites.some((favorite) => favorite.id === currentFavoriteId)));
@@ -2121,9 +2175,10 @@ function App() {
       const result = await generateShareImage(selectedFavorite);
       const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
         shareBackgroundImage: result.backgroundImage,
+        shareBackgroundSource: result.backgroundSource,
         shareLayout: result.layout,
         shareDefaultLayout: result.layout,
-      });
+      }, favorites);
       setFavorites(nextFavorites);
       setShareMessage(selectedFavorite.shareImage ? '分享图已重新生成。' : '分享图已生成。');
     } catch (error) {
@@ -2556,8 +2611,9 @@ function App() {
       );
       const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
         shareBackgroundImage: result.backgroundImage,
+        shareBackgroundSource: result.backgroundSource,
         shareLayout: result.layout,
-      });
+      }, favorites);
       setFavorites(nextFavorites);
       setIsPosterTextEditorOpen(false);
       setDraftPosterLayout(null);

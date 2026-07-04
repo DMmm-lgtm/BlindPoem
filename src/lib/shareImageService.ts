@@ -1,9 +1,13 @@
 import type { FavoritePoem } from './favoriteService';
+import { isSupabaseConfigured, supabase } from './supabaseClient';
 
 const DAILY_LIMIT_KEY = 'blindpoem.shareImageDailyLimit.v1';
 const DAILY_GENERATION_LIMIT = 3;
 const POSTER_WIDTH = 1080;
 const POSTER_HEIGHT = 1440;
+const BACKGROUND_UPLOAD_QUALITY = 0.82;
+const SEMANTIC_FALLBACK_LIMIT = 80;
+const SHARE_BACKGROUND_BUCKET = 'share-backgrounds';
 const WEBSITE_URL = 'https://www.blindpoem.space/';
 const WEBSITE_DISPLAY_URL = 'www.blindpoem.space';
 const WEBSITE_QR_CODE_PATH = '/blindpoem-site-qr.png';
@@ -34,6 +38,7 @@ export type PosterTextLayout = {
 export type ShareImageResult = {
   image: string;
   backgroundImage: string;
+  backgroundSource: 'ai' | 'semantic-fallback' | 'local-fallback';
   layout: PosterTextLayout;
 };
 
@@ -44,6 +49,21 @@ export type PosterTextPreviewMetrics = {
   metaLineHeight: number;
   textAlign: 'left' | 'right' | 'center';
   isVertical: boolean;
+};
+
+type RemoteShareImageResult = {
+  image: string;
+  visualBrief: string | null;
+};
+
+type ShareBackgroundRecord = {
+  image_url: string;
+  storage_path?: string | null;
+  content?: string | null;
+  poem_title?: string | null;
+  author?: string | null;
+  visual_brief?: string | null;
+  tags?: string[] | null;
 };
 
 const POSTER_STYLES: PosterStyle[] = [
@@ -245,6 +265,205 @@ function loadImage(source: string): Promise<HTMLImageElement | null> {
     image.onerror = () => resolve(null);
     image.src = source;
   });
+}
+
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  const [header, base64Data] = dataUrl.split(',');
+  const mimeMatch = header?.match(/^data:([^;]+);base64$/);
+  if (!mimeMatch || !base64Data) return null;
+
+  const binary = window.atob(base64Data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeMatch[1] });
+}
+
+function normalizeTag(tag: string): string {
+  return tag
+    .toLowerCase()
+    .replace(/[^\p{Script=Han}a-z0-9]+/gu, '')
+    .trim();
+}
+
+function extractSemanticTags(...sources: Array<string | null | undefined>): string[] {
+  const text = sources.filter(Boolean).join(' ').toLowerCase();
+  const tags = new Set<string>();
+  const phraseMap: Array<[string, string[]]> = [
+    ['月', ['月', 'moon', 'night']],
+    ['moon', ['月', 'moon', 'night']],
+    ['夜', ['夜', 'night', 'dark']],
+    ['星', ['星', 'star', 'night']],
+    ['雨', ['雨', 'rain', 'mist']],
+    ['雪', ['雪', 'snow', 'winter']],
+    ['风', ['风', 'wind']],
+    ['云', ['云', 'cloud', 'sky']],
+    ['山', ['山', 'mountain']],
+    ['水', ['水', 'river', 'lake']],
+    ['江', ['水', 'river']],
+    ['河', ['水', 'river']],
+    ['海', ['海', 'ocean']],
+    ['湖', ['湖', 'lake']],
+    ['花', ['花', 'flower', 'spring']],
+    ['树', ['树', 'forest']],
+    ['林', ['林', 'forest']],
+    ['春', ['春', 'spring']],
+    ['夏', ['夏', 'summer']],
+    ['秋', ['秋', 'autumn']],
+    ['冬', ['冬', 'winter']],
+    ['酒', ['酒', 'wine', 'warmth']],
+    ['茶', ['茶', 'tea', 'quiet']],
+    ['灯', ['灯', 'lamp', 'night']],
+    ['梦', ['梦', 'dream']],
+    ['孤', ['孤独', 'solitude']],
+    ['愁', ['忧愁', 'melancholy']],
+    ['别', ['离别', 'farewell']],
+    ['远', ['远方', 'distance']],
+    ['归', ['归来', 'homecoming']],
+    ['光', ['光', 'light']],
+    ['sun', ['sun', 'light']],
+    ['dawn', ['dawn', 'light']],
+    ['dusk', ['dusk', 'evening']],
+    ['rain', ['雨', 'rain', 'mist']],
+    ['snow', ['雪', 'snow', 'winter']],
+    ['mountain', ['山', 'mountain']],
+    ['river', ['水', 'river']],
+    ['forest', ['林', 'forest']],
+    ['flower', ['花', 'flower']],
+    ['solitude', ['孤独', 'solitude']],
+    ['melancholy', ['忧愁', 'melancholy']],
+    ['quiet', ['安静', 'quiet']],
+  ];
+
+  phraseMap.forEach(([needle, values]) => {
+    if (text.includes(needle)) {
+      values.forEach((value) => tags.add(normalizeTag(value)));
+    }
+  });
+
+  const tokens = text.match(/[\p{Script=Han}]{1,2}|[a-z0-9]{3,}/gu) || [];
+  tokens.slice(0, 80).forEach((token) => {
+    const normalized = normalizeTag(token);
+    if (normalized.length >= 2) tags.add(normalized);
+  });
+
+  return [...tags].filter(Boolean).slice(0, 32);
+}
+
+function scoreSemanticBackground(record: ShareBackgroundRecord, targetTags: string[]): number {
+  const recordTags = new Set((record.tags || []).map(normalizeTag).filter(Boolean));
+  const target = targetTags.map(normalizeTag).filter(Boolean);
+  let score = 0;
+
+  target.forEach((tag) => {
+    if (recordTags.has(tag)) score += 4;
+  });
+
+  const haystack = [
+    record.content,
+    record.poem_title,
+    record.author,
+    record.visual_brief,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  target.forEach((tag) => {
+    if (tag && haystack.includes(tag)) score += 1;
+  });
+
+  return score;
+}
+
+async function findSemanticFallbackBackground(poem: FavoritePoem): Promise<string | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const targetTags = extractSemanticTags(poem.content, poem.poem_title, poem.author);
+  if (targetTags.length === 0) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('share_backgrounds')
+      .select('image_url, storage_path, content, poem_title, author, visual_brief, tags')
+      .order('created_at', { ascending: false })
+      .limit(SEMANTIC_FALLBACK_LIMIT);
+
+    if (error || !data || data.length === 0) {
+      if (error) console.warn('⚠️ 读取 Supabase 背景池失败：', error);
+      return null;
+    }
+
+    const ranked = (data as ShareBackgroundRecord[])
+      .map((record) => ({ record, score: scoreSemanticBackground(record, targetTags) }))
+      .filter(({ record, score }) => score > 0 && Boolean(record.image_url))
+      .sort((a, b) => b.score - a.score);
+
+    return ranked[0]?.record.image_url || null;
+  } catch (error) {
+    console.warn('⚠️ 语义背景兜底失败：', error);
+    return null;
+  }
+}
+
+async function uploadShareBackground(
+  poem: FavoritePoem,
+  backgroundImage: string,
+  visualBrief: string | null
+): Promise<string | null> {
+  if (!isSupabaseConfigured || !supabase || !backgroundImage.startsWith('data:image/')) {
+    return null;
+  }
+
+  const blob = dataUrlToBlob(backgroundImage);
+  if (!blob) return null;
+
+  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const date = new Date().toISOString().slice(0, 10);
+  const storagePath = `generated/${date}/${id}.jpg`;
+  const tags = extractSemanticTags(poem.content, poem.poem_title, poem.author, visualBrief);
+
+  try {
+    const { error: uploadError } = await supabase.storage
+      .from(SHARE_BACKGROUND_BUCKET)
+      .upload(storagePath, blob, {
+        contentType: 'image/jpeg',
+        cacheControl: '31536000',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.warn('⚠️ 上传分享背景到 Supabase Storage 失败：', uploadError);
+      return null;
+    }
+
+    const { data } = supabase.storage
+      .from(SHARE_BACKGROUND_BUCKET)
+      .getPublicUrl(storagePath);
+    const imageUrl = data.publicUrl;
+
+    const { error: insertError } = await supabase
+      .from('share_backgrounds')
+      .insert({
+        storage_path: storagePath,
+        image_url: imageUrl,
+        content: poem.content,
+        poem_title: poem.poem_title,
+        author: poem.author,
+        visual_brief: visualBrief,
+        tags,
+      });
+
+    if (insertError) {
+      console.warn('⚠️ 写入分享背景元数据失败：', insertError);
+    }
+
+    return imageUrl;
+  } catch (error) {
+    console.warn('⚠️ 保存分享背景失败：', error);
+    return null;
+  }
 }
 
 function drawImageCover(
@@ -1070,7 +1289,7 @@ function drawPosterText(
   context.restore();
 }
 
-async function tryGenerateRemoteShareImage(poem: FavoritePoem): Promise<string | null> {
+async function tryGenerateRemoteShareImage(poem: FavoritePoem): Promise<RemoteShareImageResult | null> {
   try {
     const response = await fetch('/api/generate-share-image', {
       method: 'POST',
@@ -1084,8 +1303,10 @@ async function tryGenerateRemoteShareImage(poem: FavoritePoem): Promise<string |
 
     if (!response.ok) return null;
 
-    const result = await response.json() as { image?: string };
-    return result.image || null;
+    const result = await response.json() as { image?: string; visualBrief?: string | null };
+    return result.image
+      ? { image: result.image, visualBrief: result.visualBrief || null }
+      : null;
   } catch {
     return null;
   }
@@ -1163,29 +1384,45 @@ export async function regenerateShareImageWithLayout(
 ): Promise<ShareImageResult> {
   const formattedLayout = createFormattedPosterLayout(poem, layout);
   const image = await composeShareImage(poem, backgroundImage, formattedLayout);
-  return { image, backgroundImage, layout: formattedLayout };
+  return {
+    image,
+    backgroundImage,
+    backgroundSource: poem.shareBackgroundSource || 'local-fallback',
+    layout: formattedLayout,
+  };
 }
 
 export async function generateShareImage(poem: FavoritePoem): Promise<ShareImageResult> {
   const style = POSTER_STYLES[Math.floor(Math.random() * POSTER_STYLES.length)];
-  const remoteImage = hasAiGenerationQuota() ? await tryGenerateRemoteShareImage(poem) : null;
-  const aiBackground = remoteImage ? await loadImage(remoteImage) : null;
+  const remoteResult = hasAiGenerationQuota() ? await tryGenerateRemoteShareImage(poem) : null;
+  const aiBackground = remoteResult ? await loadImage(remoteResult.image) : null;
+  const semanticFallbackImage = aiBackground ? null : await findSemanticFallbackBackground(poem);
+  const semanticFallbackBackground = semanticFallbackImage ? await loadImage(semanticFallbackImage) : null;
   const [backgroundCanvas, backgroundContext] = createPosterCanvas();
+  let backgroundSource: ShareImageResult['backgroundSource'] = 'local-fallback';
 
   if (aiBackground) {
     // Only successful AI backgrounds consume the daily AI image quota.
     // The local canvas fallback poster is free and must not affect the counter.
     assertAndConsumeAiGenerationQuota();
     drawImageCover(backgroundContext, aiBackground, POSTER_WIDTH, POSTER_HEIGHT);
+    backgroundSource = 'ai';
+  } else if (semanticFallbackBackground) {
+    drawImageCover(backgroundContext, semanticFallbackBackground, POSTER_WIDTH, POSTER_HEIGHT);
+    backgroundSource = 'semantic-fallback';
   } else {
     drawFallbackBackground(backgroundContext, style);
   }
 
-  const backgroundImage = backgroundCanvas.toDataURL('image/jpeg', 0.92);
+  const compressedBackgroundImage = backgroundCanvas.toDataURL('image/jpeg', BACKGROUND_UPLOAD_QUALITY);
+  const uploadedBackgroundImage = backgroundSource === 'ai'
+    ? await uploadShareBackground(poem, compressedBackgroundImage, remoteResult?.visualBrief || null)
+    : null;
+  const backgroundImage = uploadedBackgroundImage || semanticFallbackImage || compressedBackgroundImage;
   const layout = createNaturalPosterTextLayout(poem, createPosterTextLayout(poem, style, backgroundContext));
   const image = await composeShareImage(poem, backgroundImage, layout);
 
-  return { image, backgroundImage, layout };
+  return { image, backgroundImage, backgroundSource, layout };
 }
 
 export function downloadShareImage(image: string, poem: FavoritePoem): void {

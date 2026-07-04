@@ -283,6 +283,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         error: 'Cloudflare AI image generation failed',
         detail: errorText,
         model,
+        visualBrief,
       });
     }
 
@@ -299,6 +300,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       error: 'Failed to generate share image',
       detail: error instanceof Error ? error.message : String(error),
       model,
+      visualBrief,
     });
   }
 }
