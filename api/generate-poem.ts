@@ -21,8 +21,11 @@ const OPENROUTER_FREE_TEXT_MODELS = [
 ];
 const OPENROUTER_MODEL_TIMEOUT_MS = 8000;
 const OPENROUTER_MAX_MODEL_ATTEMPTS = 2;
+const OPENROUTER_FREE_COOLDOWN_MS = Number(process.env.OPENROUTER_FREE_COOLDOWN_SECONDS || 90) * 1000;
 const DEEPSEEK_TIMEOUT_MS = 12000;
 const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
+
+let lastOpenRouterFreeAttemptAt = 0;
 
 function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
@@ -109,6 +112,14 @@ function getOpenRouterModels(): string[] {
   const uniqueModels = [...new Set([...expandedModels, ...OPENROUTER_FREE_TEXT_MODELS])];
 
   return uniqueModels;
+}
+
+function getOpenRouterCooldownRemainingMs(): number {
+  return Math.max(0, OPENROUTER_FREE_COOLDOWN_MS - (Date.now() - lastOpenRouterFreeAttemptAt));
+}
+
+function reserveOpenRouterFreeAttempt(): void {
+  lastOpenRouterFreeAttemptAt = Date.now();
 }
 
 function extractOpenRouterText(data: unknown): string {
@@ -417,15 +428,30 @@ export default async function handler(
 
     const fullPrompt = buildPoemPrompt(moodName, shouldMatchMood);
 
+    const hasOpenRouter = Boolean(process.env.OPENROUTER_API_KEY);
+    const hasDeepSeek = Boolean(process.env.DEEPSEEK_API_KEY);
+    const openRouterCooldownRemainingMs = getOpenRouterCooldownRemainingMs();
+    const shouldUseOpenRouter = hasOpenRouter && (
+      openRouterCooldownRemainingMs <= 0 ||
+      !hasDeepSeek
+    );
+
+    if (hasOpenRouter && !shouldUseOpenRouter) {
+      console.log(`⏳ OpenRouter 免费模型冷却中，剩余 ${Math.ceil(openRouterCooldownRemainingMs / 1000)} 秒，本次直接使用 DeepSeek`);
+    }
+
     const providers = [
       {
         name: 'OpenRouter',
-        enabled: Boolean(process.env.OPENROUTER_API_KEY),
-        generate: generateWithOpenRouter,
+        enabled: shouldUseOpenRouter,
+        generate: async (prompt: string) => {
+          reserveOpenRouterFreeAttempt();
+          return generateWithOpenRouter(prompt);
+        },
       },
       {
         name: 'DeepSeek',
-        enabled: Boolean(process.env.DEEPSEEK_API_KEY),
+        enabled: hasDeepSeek,
         generate: generateWithDeepSeek,
       },
     ];

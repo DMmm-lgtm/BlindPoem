@@ -16,7 +16,7 @@ BlindPoem is a web artwork where visitors click emotion emoji to reveal poetry.
 When a visitor clicks an emoji:
 
 1. Try AI generation through `/api/generate-poem`.
-2. Use OpenRouter free text models, with multiple model fallbacks.
+2. Use OpenRouter free text models at most once every 90 seconds per warm backend instance, with DeepSeek handling requests during the cooldown.
 3. Save successful AI poems to Supabase and browser localStorage.
 4. If AI fails, read from Supabase.
 5. If Supabase fails, read browser localStorage.
