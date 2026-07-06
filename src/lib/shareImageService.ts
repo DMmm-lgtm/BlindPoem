@@ -819,6 +819,11 @@ function drawVerticalColumns(
   });
 }
 
+function formatVerticalBookTitle(title: string): string {
+  const cleanedTitle = title.replace(/[《》︽︾]/g, '').trim();
+  return `︽${cleanedTitle}︾`;
+}
+
 function drawEnglishPosterText(
   context: CanvasRenderingContext2D,
   poem: FavoritePoem,
@@ -1220,7 +1225,7 @@ function drawPosterText(
       layout.x + layout.width + metaLineHeight
     );
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
-    drawVerticalColumns(context, [`《${poem.poem_title}》`], metaStartX, layout.y, metaLineHeight, metaLineHeight, 1);
+    drawVerticalColumns(context, [formatVerticalBookTitle(poem.poem_title)], metaStartX, layout.y, metaLineHeight, metaLineHeight, 1);
     drawVerticalColumns(context, [poem.author], metaStartX + metaLineHeight, layout.y, metaLineHeight, metaLineHeight, 1);
   } else if (layout.kind === 'right-vertical') {
     const poemColumns = fitVerticalPoemColumns(
@@ -1249,7 +1254,7 @@ function drawPosterText(
     const metaLineHeight = Math.round(34 * metaScale);
     const metaStartX = Math.max(metaFontSize / 2 + 18, layout.x - metaLineHeight);
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
-    drawVerticalColumns(context, [`《${poem.poem_title}》`], metaStartX, layout.y, metaLineHeight, metaLineHeight, -1);
+    drawVerticalColumns(context, [formatVerticalBookTitle(poem.poem_title)], metaStartX, layout.y, metaLineHeight, metaLineHeight, -1);
     drawVerticalColumns(context, [poem.author], metaStartX - metaLineHeight, layout.y, metaLineHeight, metaLineHeight, -1);
   } else {
     const isRight = layout.kind === 'bottom-right-small';

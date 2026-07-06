@@ -340,6 +340,11 @@ function formatPoemForDisplay(content: string): string {
   return trimmed.replace(/\s+/g, ' ');
 }
 
+function formatVerticalBookTitle(title: string): string {
+  const cleanedTitle = title.replace(/[《》︽︾]/g, '').trim();
+  return `︽${cleanedTitle}︾`;
+}
+
 function getPoemDisplayLines(content: string): string[] {
   return content
     .split(/\r?\n/)
@@ -3428,7 +3433,7 @@ function App() {
                       >
                         {draftPosterLayout.kind.includes('vertical') ? (
                           <>
-                            <span>《{selectedFavorite.poem_title}》</span>
+                            <span>{formatVerticalBookTitle(selectedFavorite.poem_title)}</span>
                             <span>{selectedFavorite.author}</span>
                           </>
                         ) : (

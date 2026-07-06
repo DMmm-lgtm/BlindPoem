@@ -91,11 +91,17 @@ function parseVisualBrief(text: string): string {
 
 function buildVisualBriefPrompt(content: string, poemTitle: string, author: string): string {
   return [
-    'Create a concise English visual brief for an AI image generator.',
+    'Create an English visual brief for an AI image generator.',
     'The image will become a share poster background for a poem, but the generator must not draw any text.',
-    'Focus on concrete imagery, mood, season, light, materials, setting, and composition.',
-    'Prefer one strong visual subject with graceful negative space for later poem overlay.',
+    'Before writing the brief, internally interpret the poem line in plain language.',
+    'Then internally consider what role this line may play in the whole poem, using the title and author when helpful.',
+    'If you know the poem, use that whole-poem context. If uncertain, infer cautiously from the line, title, and author without inventing factual plot details.',
+    'The final visual brief must reflect that interpretation, not just a generic mood.',
+    'Prefer concrete relationships, gestures, objects, interiors, materials, light, cultural details, and spatial tensions that arise from the poem.',
+    'Include layered visual specifics from the poem when possible; do not reduce the poem to a generic empty landscape symbol.',
+    'Keep one calm area suitable for later poem overlay, but do not make emptiness the main concept.',
     'Do not include quoted poem text, title text, author text, typography, calligraphy, symbols, watermark, or logo.',
+    'Do not output your interpretation. Output only the JSON object.',
     'Return JSON only: {"visual_brief":""}',
     '',
     `Poem line: ${content}`,
@@ -130,7 +136,7 @@ async function buildVisualBrief(content: string, poemTitle: string, author: stri
         messages: [
           {
             role: 'system',
-            content: 'Return valid JSON only. No markdown. Write one visual brief for image generation. The JSON schema is {"visual_brief":""}.',
+            content: 'Return valid JSON only. No markdown. Internally interpret the poem before writing the image brief, but output only {"visual_brief":""}.',
           },
           {
             role: 'user',
@@ -138,7 +144,7 @@ async function buildVisualBrief(content: string, poemTitle: string, author: stri
           },
         ],
         temperature: 0.65,
-        max_tokens: 220,
+        max_tokens: 360,
         response_format: { type: 'json_object' },
         thinking: { type: 'disabled' },
         stream: false,
@@ -174,8 +180,10 @@ async function buildVisualBrief(content: string, poemTitle: string, author: stri
 function buildImagePromptFromBrief(visualBrief: string): string {
   return [
     visualBrief,
+    'Create an image from this brief as a poetic poster background.',
+    'Include layered concrete details, tactile materials, and spatial relationships from the brief.',
     'Elegant cinematic composition, natural depth, refined color, emotionally faithful to the brief.',
-    'Leave tasteful negative space for a poem overlay added later.',
+    'Keep one calm area suitable for later poem overlay, without making emptiness the main concept.',
     'No text, no letters, no words, no captions, no calligraphy, no typography, no watermark, no logo, no signature.',
   ].join('\n');
 }
@@ -183,8 +191,9 @@ function buildImagePromptFromBrief(visualBrief: string): string {
 function buildFallbackImagePrompt(content: string, poemTitle: string, author: string): string {
   return [
     'Create a beautiful poetic background image for a share poster.',
-    'Use the poem as inspiration for concrete scenery, emotion, light, season, and composition.',
-    'Prefer one strong visual subject with graceful negative space for a poem overlay added later.',
+    'Use the poem as inspiration for concrete relationships, gestures, objects, interiors, materials, light, cultural details, and spatial tension.',
+    'Do not reduce the poem to a generic mood landscape; include layered visual specifics suggested by the line, title, and author.',
+    'Keep one calm area suitable for later poem overlay, without making emptiness the main concept.',
     'No text, no letters, no words, no captions, no calligraphy, no typography, no watermark, no logo, no signature.',
     `Poem line: ${content}`,
     `Title: ${poemTitle}`,
