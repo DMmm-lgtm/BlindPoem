@@ -874,8 +874,7 @@ function App() {
       selectedFavorite.shareImage ||
       !selectedFavorite.shareBackgroundImage ||
       !isPosterTextLayout(selectedFavorite.shareLayout) ||
-      sharePreviewRestoreAttemptsRef.current.has(selectedFavorite.id) ||
-      isGeneratingShareImage
+      sharePreviewRestoreAttemptsRef.current.has(selectedFavorite.id)
     ) {
       return;
     }
@@ -919,7 +918,7 @@ function App() {
     return () => {
       isCancelled = true;
     };
-  }, [favorites, isGeneratingShareImage, selectedFavorite]);
+  }, [favorites, selectedFavorite]);
 
   useEffect(() => {
     setIsLoved(Boolean(currentFavoriteId && favorites.some((favorite) => favorite.id === currentFavoriteId)));
