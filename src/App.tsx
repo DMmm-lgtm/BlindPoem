@@ -277,15 +277,67 @@ function getPosterResizeMaxScale(
   return Math.max(1, Math.min(maxWidth / startWidth, maxHeight / startHeight));
 }
 
-function normalizePoemContent(content: string): string {
-  const lines = content
-    .replace(/[\/／\\|]+/g, '\n')
-    .replace(/[，。、；！？,.!?;:：]+/g, '\n')
-    .split(/\r?\n/)
-    .map((line) => line.replace(/[“”"‘’'《》〈〉「」『』（）()【】[\]{}]/g, '').trim())
+function getPoemTextProfile(content: string) {
+  const cjkCount = content.match(/[\u3400-\u9fff]/g)?.length || 0;
+  const latinCount = content.match(/[A-Za-z]/g)?.length || 0;
+
+  return { cjkCount, latinCount };
+}
+
+function cleanDisplayLineEnd(line: string): string {
+  const trimmed = line.trim();
+  const { cjkCount, latinCount } = getPoemTextProfile(trimmed);
+
+  return cjkCount > 0 && latinCount === 0
+    ? trimmed.replace(/[，。；！？]+$/g, '').trim()
+    : trimmed;
+}
+
+function normalizeDisplayLines(lines: string[]): string {
+  return lines
+    .map(cleanDisplayLineEnd)
+    .filter(Boolean)
+    .join('\n');
+}
+
+function looksLikeClassicalChineseLine(content: string): boolean {
+  const compactText = content.replace(/\s+/g, '');
+  const { cjkCount, latinCount } = getPoemTextProfile(compactText);
+  if (latinCount > 0 || cjkCount === 0 || cjkCount > 32) return false;
+
+  const clauses = compactText
+    .split(/[，。；！？]+/g)
+    .map((line) => line.trim())
     .filter(Boolean);
 
-  return lines.join('\n') || content.trim();
+  if (clauses.length < 2 || clauses.length > 4) return false;
+
+  const clauseLengths = clauses.map((line) => line.match(/[\u3400-\u9fff]/g)?.length || 0);
+  const minLength = Math.min(...clauseLengths);
+  const maxLength = Math.max(...clauseLengths);
+
+  return minLength >= 4 && maxLength <= 9 && maxLength - minLength <= 2;
+}
+
+function formatPoemForDisplay(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed) return '';
+
+  const explicitLineText = trimmed.replace(/[\/／\\|]+/g, '\n');
+  if (/\r?\n/.test(explicitLineText)) {
+    return normalizeDisplayLines(explicitLineText.split(/\r?\n/)) || trimmed;
+  }
+
+  const { cjkCount, latinCount } = getPoemTextProfile(trimmed);
+  if (latinCount > 0 && latinCount >= cjkCount) {
+    return trimmed.replace(/\s+/g, ' ');
+  }
+
+  if (looksLikeClassicalChineseLine(trimmed)) {
+    return normalizeDisplayLines(trimmed.split(/[，。；！？]+/g)) || trimmed;
+  }
+
+  return trimmed.replace(/\s+/g, ' ');
 }
 
 function getPoemDisplayLines(content: string): string[] {
@@ -2835,7 +2887,7 @@ function App() {
       // 调用服务端 AI API
       const poem = await generatePoem(keyword, mood);
       console.log('✅ 诗句生成 API 返回成功:', poem);
-      const normalizedContent = normalizePoemContent(poem.content);
+      const normalizedContent = formatPoemForDisplay(poem.content);
       
       // 展示诗句
       setPoemData({
@@ -2863,7 +2915,7 @@ function App() {
       const fallbackPoem = await getRandomPoemFromDatabase();
 
       if (fallbackPoem) {
-        const normalizedContent = normalizePoemContent(fallbackPoem.content);
+        const normalizedContent = formatPoemForDisplay(fallbackPoem.content);
         setPoemData({
           content: normalizedContent,
           poem_title: fallbackPoem.poem_title || '未知',

@@ -48,11 +48,17 @@
 }
 
 .poem-display-lines {
-  overflow-x: auto;
+  overflow-x: visible;
 }
 
 .poem-display-lines p {
-  white-space: nowrap;
+  max-width: 100%;
+  padding-left: 1.1em;
+  text-indent: -1.1em;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-wrap: pretty;
 }
 
 .favorites-trigger {
