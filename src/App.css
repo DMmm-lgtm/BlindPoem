@@ -362,6 +362,111 @@
   pointer-events: none;
 }
 
+.poster-branding-qr {
+  position: absolute;
+  left: 4.07%;
+  bottom: 3.05%;
+  z-index: 3;
+  width: 10%;
+  aspect-ratio: 1;
+  padding: 0.72%;
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.9);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.poster-branding-qr > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.poster-branding-logo {
+  position: absolute;
+  right: 4.07%;
+  bottom: 3.05%;
+  z-index: 3;
+  display: grid;
+  justify-items: end;
+  gap: 0.12rem;
+  color: rgba(255, 244, 210, 0.66);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.1;
+  pointer-events: none;
+  text-shadow: 0 0 0.5rem rgba(0, 0, 0, 0.45);
+}
+
+.poster-branding-logo strong {
+  font-size: clamp(0.45rem, 2.2vw, 0.72rem);
+  font-weight: 500;
+}
+
+.poster-branding-logo span {
+  color: rgba(255, 244, 210, 0.52);
+  font-size: clamp(0.38rem, 1.85vw, 0.62rem);
+}
+
+.poster-branding-remove {
+  position: absolute;
+  top: -0.7rem;
+  left: -0.7rem;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0;
+  border: 1px solid rgba(255, 232, 173, 0.75);
+  border-radius: 999px;
+  background: rgba(8, 10, 24, 0.88);
+  color: rgba(255, 242, 207, 0.96);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.poster-branding-logo .poster-branding-remove {
+  right: -0.7rem;
+  left: auto;
+}
+
+.poster-branding-add-controls {
+  position: absolute;
+  top: 0.8rem;
+  left: 0.8rem;
+  z-index: 5;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.poster-branding-add-controls button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid rgba(255, 232, 173, 0.72);
+  border-radius: 999px;
+  background: rgba(10, 11, 24, 0.68);
+  color: rgba(255, 238, 191, 0.96);
+  font-size: 0.62rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.poster-branding-add-controls b {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.22rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
 .poster-text-box {
   position: absolute;
   box-sizing: border-box;
@@ -673,26 +778,6 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-}
-
-.developer-poster-options {
-  display: flex;
-  flex-basis: 100%;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.8rem;
-  margin-top: 0.55rem;
-}
-
-.developer-poster-options label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  cursor: pointer;
-}
-
-.developer-poster-options small {
-  flex-basis: 100%;
-  opacity: 0.7;
 }
 
 .share-message {

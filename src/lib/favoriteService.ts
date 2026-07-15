@@ -10,6 +10,10 @@ export interface FavoritePoem {
   shareBackgroundSource?: 'ai' | 'semantic-fallback' | 'local-fallback';
   shareLayout?: unknown;
   shareDefaultLayout?: unknown;
+  shareBranding?: {
+    showQRCode: boolean;
+    showBranding: boolean;
+  };
 }
 
 const FAVORITES_KEY = 'blindpoem.favorites.v1';
@@ -163,7 +167,7 @@ export function removeFavorite(favoriteId: string): FavoritePoem[] {
 export function updateFavoriteShareImage(
   favoriteId: string,
   shareImage: string,
-  metadata: Pick<FavoritePoem, 'shareBackgroundImage' | 'shareLayout'> & Partial<Pick<FavoritePoem, 'shareDefaultLayout' | 'shareBackgroundSource'>> = {},
+  metadata: Pick<FavoritePoem, 'shareBackgroundImage' | 'shareLayout'> & Partial<Pick<FavoritePoem, 'shareDefaultLayout' | 'shareBackgroundSource' | 'shareBranding'>> = {},
   sourceFavorites = readFavorites()
 ): FavoritePoem[] {
   return writeFavorites(

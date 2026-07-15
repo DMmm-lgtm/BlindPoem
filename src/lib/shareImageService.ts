@@ -24,6 +24,11 @@ const DEFAULT_BRANDING_OPTIONS: PosterBrandingOptions = {
   showBranding: true,
 };
 
+const POSTER_QR_RESERVED_ZONE = { left: 34, top: 1276, right: 172, bottom: 1414 };
+const POSTER_BRAND_RESERVED_ZONE = { left: 650, top: 1310, right: 1052, bottom: 1414 };
+const POSTER_BRANDING_CLEARANCE = 18;
+const POSTER_LAYOUT_EDGE_PADDING = 18;
+
 type PosterStyle = {
   name: string;
   background: [string, string, string];
@@ -1370,6 +1375,69 @@ function drawFallbackBackground(context: CanvasRenderingContext2D, style: Poster
   context.stroke();
 }
 
+function posterBoundsOverlap(
+  first: { left: number; top: number; right: number; bottom: number },
+  second: { left: number; top: number; right: number; bottom: number }
+): boolean {
+  return first.left < second.right
+    && first.right > second.left
+    && first.top < second.bottom
+    && first.bottom > second.top;
+}
+
+function getPosterLayoutContentBounds(poem: FavoritePoem, layout: PosterTextLayout) {
+  const metrics = getPosterTextPreviewMetrics(poem, layout);
+  if (!layout.kind.includes('vertical')) {
+    return {
+      left: layout.x,
+      top: layout.y,
+      right: layout.x + layout.width,
+      bottom: layout.y + layout.height + metrics.metaLineHeight * 1.45,
+    };
+  }
+
+  const titleLength = [...`《${poem.poem_title}》`].length;
+  const authorLength = [...poem.author].length;
+  const metaHeight = Math.max(titleLength, authorLength) * metrics.metaLineHeight;
+  const metaWidth = metrics.metaLineHeight * 2;
+  const metaLeft = layout.kind === 'upper-left-vertical'
+    ? layout.x + layout.width + 24
+    : layout.x - 24 - metaWidth;
+
+  return {
+    left: Math.min(layout.x, metaLeft),
+    top: layout.y,
+    right: Math.max(layout.x + layout.width, metaLeft + metaWidth),
+    bottom: Math.max(layout.y + layout.height, layout.y + metaHeight),
+  };
+}
+
+export function resolvePosterLayoutForBranding(
+  poem: FavoritePoem,
+  layout: PosterTextLayout,
+  branding: PosterBrandingOptions
+): PosterTextLayout {
+  const nextLayout = { ...layout };
+  const reservedZones = [
+    ...(branding.showQRCode ? [POSTER_QR_RESERVED_ZONE] : []),
+    ...(branding.showBranding ? [POSTER_BRAND_RESERVED_ZONE] : []),
+  ];
+
+  for (let index = 0; index < reservedZones.length + 1; index += 1) {
+    const contentBounds = getPosterLayoutContentBounds(poem, nextLayout);
+    const collisions = reservedZones.filter((zone) => posterBoundsOverlap(contentBounds, zone));
+    if (collisions.length === 0) break;
+
+    const nearestTop = Math.min(...collisions.map((zone) => zone.top));
+    nextLayout.y = Math.max(
+      POSTER_LAYOUT_EDGE_PADDING,
+      nextLayout.y - (contentBounds.bottom - nearestTop + POSTER_BRANDING_CLEARANCE)
+    );
+  }
+
+  return nextLayout;
+}
+
 async function composeShareImage(
   poem: FavoritePoem,
   backgroundImage: string,
@@ -1403,12 +1471,13 @@ export async function regenerateShareImageWithLayout(
   brandingOptions: PosterBrandingOptions = DEFAULT_BRANDING_OPTIONS
 ): Promise<ShareImageResult> {
   const formattedLayout = createFormattedPosterLayout(poem, layout);
-  const image = await composeShareImage(poem, backgroundImage, formattedLayout, brandingOptions);
+  const resolvedLayout = resolvePosterLayoutForBranding(poem, formattedLayout, brandingOptions);
+  const image = await composeShareImage(poem, backgroundImage, resolvedLayout, brandingOptions);
   return {
     image,
     backgroundImage,
     backgroundSource: poem.shareBackgroundSource || 'local-fallback',
-    layout: formattedLayout,
+    layout: resolvedLayout,
   };
 }
 
@@ -1442,8 +1511,13 @@ export async function generateShareImage(
     ? await uploadShareBackground(poem, compressedBackgroundImage, remoteResult?.visualBrief || null)
     : null;
   const backgroundImage = uploadedBackgroundImage || semanticFallbackImage || compressedBackgroundImage;
-  const layout = createNaturalPosterTextLayout(poem, createPosterTextLayout(poem, style, backgroundContext));
-  const image = await composeShareImage(poem, backgroundImage, layout, options.branding);
+  const branding = options.branding || DEFAULT_BRANDING_OPTIONS;
+  const layout = resolvePosterLayoutForBranding(
+    poem,
+    createNaturalPosterTextLayout(poem, createPosterTextLayout(poem, style, backgroundContext)),
+    branding
+  );
+  const image = await composeShareImage(poem, backgroundImage, layout, branding);
 
   return { image, backgroundImage, backgroundSource, layout };
 }

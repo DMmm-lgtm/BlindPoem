@@ -232,6 +232,13 @@ function isPosterTextLayout(layout: unknown): layout is PosterTextLayout {
   );
 }
 
+function getFavoritePosterBranding(favorite: FavoritePoem): PosterBrandingOptions {
+  return {
+    showQRCode: favorite.shareBranding?.showQRCode !== false,
+    showBranding: favorite.shareBranding?.showBranding !== false,
+  };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -389,10 +396,8 @@ const POSTER_EDGE_PADDING = 18;
 const POSTER_EDITOR_MIN_BOX_SIZE = 36;
 const POSTER_EDITOR_MIN_FONT_SCALE = 0.35;
 const POSTER_EDITOR_MAX_FONT_SCALE = 2.8;
-const POSTER_FOOTER_RESERVED_ZONES = [
-  { left: 34, top: 1276, right: 172, bottom: 1414 },
-  { left: 720, top: 1328, right: 1052, bottom: 1414 },
-];
+const POSTER_QR_RESERVED_ZONE = { left: 34, top: 1276, right: 172, bottom: 1414 };
+const POSTER_BRAND_RESERVED_ZONE = { left: 650, top: 1310, right: 1052, bottom: 1414 };
 
 type PosterEditorIconName = 'arrow-left' | 'arrow-right' | 'layout-horizontal' | 'layout-vertical' | 'check' | 'reset' | 'close';
 
@@ -676,7 +681,7 @@ function App() {
   // Developer access is unlocked through the two-stage hidden click sequence.
   const [isDeveloperMode, setIsDeveloperMode] = useState(false);
   const [developerMessage, setDeveloperMessage] = useState('');
-  const [posterBranding, setPosterBranding] = useState<PosterBrandingOptions>({
+  const [draftPosterBranding, setDraftPosterBranding] = useState<PosterBrandingOptions>({
     showQRCode: true,
     showBranding: true,
   });
@@ -800,7 +805,6 @@ function App() {
     }
     developerModeTimerRef.current = window.setTimeout(() => {
       setIsDeveloperMode(false);
-      setPosterBranding({ showQRCode: true, showBranding: true });
       showDeveloperMessage('开发者模式已自动退出');
       developerModeTimerRef.current = null;
     }, DEVELOPER_UNLOCK.activeDurationMs);
@@ -1039,7 +1043,7 @@ function App() {
           selectedFavorite,
           backgroundImage,
           shareLayout,
-          posterBranding
+          getFavoritePosterBranding(selectedFavorite)
         );
 
         if (isCancelled) return;
@@ -1066,7 +1070,7 @@ function App() {
     return () => {
       isCancelled = true;
     };
-  }, [favorites, posterBranding, selectedFavorite]);
+  }, [favorites, selectedFavorite]);
 
   useEffect(() => {
     setIsLoved(Boolean(currentFavoriteId && favorites.some((favorite) => favorite.id === currentFavoriteId)));
@@ -2319,15 +2323,17 @@ function App() {
     setShareMessage('');
 
     try {
+      const branding = getFavoritePosterBranding(selectedFavorite);
       const result = await generateShareImage(selectedFavorite, {
         bypassLimit: isDeveloperMode,
-        branding: posterBranding,
+        branding,
       });
       const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
         shareBackgroundImage: result.backgroundImage,
         shareBackgroundSource: result.backgroundSource,
         shareLayout: result.layout,
         shareDefaultLayout: result.layout,
+        shareBranding: branding,
       }, favorites);
       setFavorites(nextFavorites);
       setShareMessage(selectedFavorite.shareImage ? '分享图已重新生成。' : '分享图已生成。');
@@ -2345,6 +2351,7 @@ function App() {
       ...selectedFavorite.shareLayout,
       fontScale: selectedFavorite.shareLayout.fontScale ?? 1,
     });
+    setDraftPosterBranding(getFavoritePosterBranding(selectedFavorite));
     setIsPosterTextEditingContent(false);
     setIsPosterTextEditorOpen(true);
     setShareMessage('');
@@ -2386,7 +2393,10 @@ function App() {
     });
   };
 
-  const clampDraftPosterLayout = (layout: PosterTextLayout): PosterTextLayout => {
+  const clampDraftPosterLayout = (
+    layout: PosterTextLayout,
+    branding: PosterBrandingOptions = draftPosterBranding
+  ): PosterTextLayout => {
     const nextLayout: PosterTextLayout = {
       ...layout,
       width: clamp(layout.width, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.width),
@@ -2419,7 +2429,11 @@ function App() {
       const adjustedMetrics = getPosterTextPreviewMetrics(selectedFavorite, nextLayout);
       const adjustedContentBounds = getPosterContentBounds(nextLayout, adjustedMetrics, selectedFavorite);
 
-      POSTER_FOOTER_RESERVED_ZONES.forEach((reservedZone) => {
+      const reservedZones = [
+        ...(branding.showQRCode ? [POSTER_QR_RESERVED_ZONE] : []),
+        ...(branding.showBranding ? [POSTER_BRAND_RESERVED_ZONE] : []),
+      ];
+      reservedZones.forEach((reservedZone) => {
         if (!doPosterBoundsOverlap(adjustedContentBounds, reservedZone)) return;
 
         nextLayout.y -= adjustedContentBounds.bottom - reservedZone.top + POSTER_EDGE_PADDING;
@@ -2430,6 +2444,20 @@ function App() {
     }
 
     return nextLayout;
+  };
+
+  const handleDraftPosterBrandingChange = (
+    key: keyof PosterBrandingOptions,
+    value: boolean
+  ) => {
+    if (!isDeveloperMode) return;
+    const nextBranding = { ...draftPosterBranding, [key]: value };
+    setDraftPosterBranding(nextBranding);
+    if (value) {
+      setDraftPosterLayout((currentLayout) => (
+        currentLayout ? clampDraftPosterLayout(currentLayout, nextBranding) : currentLayout
+      ));
+    }
   };
 
   const clampDraftPosterTextBoxOnly = (layout: PosterTextLayout): PosterTextLayout => ({
@@ -2758,12 +2786,13 @@ function App() {
         selectedFavorite,
         selectedFavorite.shareBackgroundImage,
         finalLayout,
-        posterBranding
+        draftPosterBranding
       );
       const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
         shareBackgroundImage: result.backgroundImage,
         shareBackgroundSource: result.backgroundSource,
         shareLayout: result.layout,
+        shareBranding: draftPosterBranding,
       }, favorites);
       setFavorites(nextFavorites);
       setIsPosterTextEditorOpen(false);
@@ -3437,6 +3466,69 @@ function App() {
                       alt="诗句分享图背景"
                       className="poster-editor-background"
                     />
+                    {draftPosterBranding.showQRCode && (
+                      <div className="poster-branding-qr">
+                        <img src="/blindpoem-site-qr.png" alt="网站二维码" />
+                        {isDeveloperMode && (
+                          <button
+                            type="button"
+                            className="poster-branding-remove"
+                            onClick={() => handleDraftPosterBrandingChange('showQRCode', false)}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            aria-label="移除二维码"
+                            title="移除二维码"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {draftPosterBranding.showBranding && (
+                      <div className="poster-branding-logo">
+                        <strong>BlindPoem 盲盒诗</strong>
+                        <span>www.blindpoem.space</span>
+                        {isDeveloperMode && (
+                          <button
+                            type="button"
+                            className="poster-branding-remove"
+                            onClick={() => handleDraftPosterBrandingChange('showBranding', false)}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            aria-label="移除 Logo 与网址"
+                            title="移除 Logo 与网址"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {isDeveloperMode && (!draftPosterBranding.showQRCode || !draftPosterBranding.showBranding) && (
+                      <div className="poster-branding-add-controls">
+                        {!draftPosterBranding.showQRCode && (
+                          <button
+                            type="button"
+                            onClick={() => handleDraftPosterBrandingChange('showQRCode', true)}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            aria-label="恢复二维码"
+                            title="恢复二维码"
+                          >
+                            <span aria-hidden="true">QR</span>
+                            <b aria-hidden="true">＋</b>
+                          </button>
+                        )}
+                        {!draftPosterBranding.showBranding && (
+                          <button
+                            type="button"
+                            onClick={() => handleDraftPosterBrandingChange('showBranding', true)}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            aria-label="恢复 Logo 与网址"
+                            title="恢复 Logo 与网址"
+                          >
+                            <span aria-hidden="true">BP</span>
+                            <b aria-hidden="true">＋</b>
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div
                       ref={posterEditorBoxRef}
                       className={`poster-text-box poster-text-box-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} poster-text-box-${draftPosterLayout.kind} ${isPosterTextEditingContent ? 'poster-text-box-editing' : ''}`}
@@ -3649,33 +3741,6 @@ function App() {
                       ? '开发模式：生成次数不限'
                       : `今日还可生成 ${getRemainingShareImageGenerations(isDeveloperMode)} 张`}
                   </span>
-                  {isDeveloperMode && (
-                    <div className="developer-poster-options">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={posterBranding.showQRCode}
-                          onChange={(event) => setPosterBranding((current) => ({
-                            ...current,
-                            showQRCode: event.target.checked,
-                          }))}
-                        />
-                        二维码
-                      </label>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={posterBranding.showBranding}
-                          onChange={(event) => setPosterBranding((current) => ({
-                            ...current,
-                            showBranding: event.target.checked,
-                          }))}
-                        />
-                        Logo 与网址
-                      </label>
-                      <small>切换后点“调整→完成”或“重新生成图”应用。</small>
-                    </div>
-                  )}
                 </div>
 
                 {shareMessage && <p className="share-message">{shareMessage}</p>}
