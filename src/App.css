@@ -520,6 +520,9 @@
 }
 
 .poster-text-editor-horizontal {
+  position: relative;
+  top: -0.08em;
+  height: calc(100% + 0.16em);
   padding: 0;
   white-space: pre;
   overflow-wrap: normal;

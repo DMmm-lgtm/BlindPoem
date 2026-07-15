@@ -2758,7 +2758,14 @@ function App() {
     if (!posterDragRef.current) return;
     if (posterDragRef.current.mode !== 'pinch' && posterDragRef.current.pointerId !== event.pointerId) return;
 
-    setDraftPosterLayout(posterDragRef.current.layout);
+    const completedGesture = posterDragRef.current;
+    const nextLayout = completedGesture.mode === 'move' || !selectedFavorite
+      ? completedGesture.layout
+      : clampDraftPosterLayout(
+          formatPosterTextLayoutForEditing(selectedFavorite, completedGesture.layout)
+        );
+    applyPosterEditorBoxStyle(nextLayout);
+    setDraftPosterLayout(nextLayout);
     posterDragRef.current = null;
   };
 

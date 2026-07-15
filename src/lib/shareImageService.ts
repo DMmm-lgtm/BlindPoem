@@ -713,6 +713,14 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
   const textLines = formattedLayout.text.split(/\r?\n/).filter(Boolean);
   const nextLayout = { ...formattedLayout };
   const originalRight = formattedLayout.x + formattedLayout.width;
+  const baseFontSize = isEnglishPoem(poem.content)
+    ? (formattedLayout.kind === 'bottom-right-small' ? 44 : 54)
+    : formattedLayout.kind.includes('vertical')
+      ? 52
+      : formattedLayout.kind === 'bottom-right-small'
+        ? 42
+        : 56;
+  nextLayout.fontScale = metrics.fontSize / baseFontSize;
 
   if (formattedLayout.kind.includes('vertical')) {
     const columnCount = Math.max(1, textLines.length);
@@ -722,7 +730,8 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
     // The browser's vertical textarea reserves the full character advance for
     // every glyph (including the last one). Using visible glyph bounds here
     // makes the last character wrap into a new column in the editor.
-    nextLayout.height = Math.max(verticalCharAdvance, maxChars * verticalCharAdvance);
+    nextLayout.height = Math.max(verticalCharAdvance, maxChars * verticalCharAdvance)
+      + Math.max(4, metrics.fontSize * 0.12);
   } else {
     const context = createMeasureContext();
     if (context) {
@@ -736,7 +745,8 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
       nextLayout.width = measuredWidth;
     }
     // Match the DOM line-box model used by the textarea preview.
-    nextLayout.height = Math.max(metrics.lineHeight, textLines.length * metrics.lineHeight);
+    nextLayout.height = Math.max(metrics.lineHeight, textLines.length * metrics.lineHeight)
+      + Math.max(4, metrics.fontSize * 0.12);
   }
 
   nextLayout.width = Math.min(POSTER_WIDTH, Math.max(80, Math.ceil(nextLayout.width)));
