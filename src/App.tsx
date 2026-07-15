@@ -2375,6 +2375,7 @@ function App() {
       ...resetLayout,
       fontScale: resetLayout.fontScale ?? 1,
     }));
+    setDraftPosterBranding(getFavoritePosterBranding(selectedFavorite));
     setIsPosterTextEditingContent(false);
     posterDragRef.current = null;
     posterPointersRef.current.clear();
@@ -3600,41 +3601,6 @@ function App() {
                         <PosterEditorIcon name={draftPosterLayout.kind.includes('vertical') ? 'layout-horizontal' : 'layout-vertical'} />
                       </button>
                     </div>
-                    <div className="poster-editor-actions">
-                      <button
-                        type="button"
-                        className="poster-editor-button poster-editor-icon-button"
-                        onClick={handleSavePosterTextEdit}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        disabled={isGeneratingShareImage || !draftPosterLayout}
-                        aria-label="完成文字调整"
-                        title="完成"
-                      >
-                        <PosterEditorIcon name="check" />
-                      </button>
-                      <button
-                        type="button"
-                        className="poster-editor-button poster-editor-icon-button"
-                        onClick={handleResetPosterTextEdit}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        disabled={isGeneratingShareImage || !draftPosterLayout}
-                        aria-label="还原文字调整"
-                        title="还原"
-                      >
-                        <PosterEditorIcon name="reset" />
-                      </button>
-                      <button
-                        type="button"
-                        className="poster-editor-button poster-editor-icon-button"
-                        onClick={handleCancelPosterTextEdit}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        disabled={isGeneratingShareImage}
-                        aria-label="取消文字调整"
-                        title="取消"
-                      >
-                        <PosterEditorIcon name="close" />
-                      </button>
-                    </div>
                     {posterTextPreviewMetrics && (
                       <div
                         className={`poster-text-meta poster-text-meta-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} poster-text-meta-${draftPosterLayout.kind}`}
@@ -3695,7 +3661,7 @@ function App() {
                     <button
                       type="button"
                       onClick={handleGenerateShareImage}
-                      disabled={isGeneratingShareImage}
+                      disabled={isGeneratingShareImage || isPosterTextEditorOpen}
                     >
                       {isGeneratingShareImage ? '生成中...' : selectedFavorite.shareImage ? '重新生成图' : '生成分享图片'}
                     </button>
@@ -3705,32 +3671,59 @@ function App() {
                   </div>
                   {selectedFavorite.shareImage && (
                     <div className="share-action-row share-action-row-secondary">
-                      <button
-                        type="button"
-                        onClick={handleDownloadShareImage}
-                        disabled={isGeneratingShareImage || isPosterTextEditorOpen}
-                      >
-                        保存
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSystemShare}
-                        disabled={isGeneratingShareImage || isPosterTextEditorOpen}
-                      >
-                        分享
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleStartPosterTextEdit}
-                        disabled={
-                          isPosterTextEditorOpen ||
-                          isGeneratingShareImage ||
-                          !selectedFavorite.shareBackgroundImage ||
-                          !isPosterTextLayout(selectedFavorite.shareLayout)
-                        }
-                      >
-                        调整
-                      </button>
+                      {isPosterTextEditorOpen ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleCancelPosterTextEdit}
+                            disabled={isGeneratingShareImage}
+                          >
+                            取消
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleResetPosterTextEdit}
+                            disabled={isGeneratingShareImage || !draftPosterLayout}
+                          >
+                            重置
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSavePosterTextEdit}
+                            disabled={isGeneratingShareImage || !draftPosterLayout}
+                          >
+                            完成
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleDownloadShareImage}
+                            disabled={isGeneratingShareImage}
+                          >
+                            保存
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSystemShare}
+                            disabled={isGeneratingShareImage}
+                          >
+                            分享
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleStartPosterTextEdit}
+                            disabled={
+                              isGeneratingShareImage ||
+                              !selectedFavorite.shareBackgroundImage ||
+                              !isPosterTextLayout(selectedFavorite.shareLayout)
+                            }
+                          >
+                            调整
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
