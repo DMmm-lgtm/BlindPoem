@@ -391,13 +391,12 @@ const POSTER_RESIZE_HANDLES: PosterResizeHandle[] = [
   'bottom-right',
 ];
 
-const POSTER_META_GAP = 24;
 const POSTER_EDGE_PADDING = 18;
 const POSTER_EDITOR_MIN_BOX_SIZE = 36;
 const POSTER_EDITOR_MIN_FONT_SCALE = 0.35;
 const POSTER_EDITOR_MAX_FONT_SCALE = 2.8;
 const POSTER_QR_RESERVED_ZONE = { left: 34, top: 1276, right: 172, bottom: 1414 };
-const POSTER_BRAND_RESERVED_ZONE = { left: 650, top: 1310, right: 1052, bottom: 1414 };
+const POSTER_BRAND_RESERVED_ZONE = { left: 790, top: 1310, right: 1052, bottom: 1414 };
 
 type PosterEditorIconName = 'arrow-left' | 'arrow-right' | 'layout-horizontal' | 'layout-vertical' | 'check' | 'reset' | 'close';
 
@@ -481,14 +480,13 @@ function getPosterMetaBounds(
     };
   }
 
-  const titleLength = [...`《${poem.poem_title}》`].length;
-  const authorLength = [...poem.author].length;
-  const metaHeight = Math.max(titleLength, authorLength) * metrics.metaLineHeight;
-  const metaWidth = metrics.metaLineHeight * 2;
+  const metaHeight = [...`${formatVerticalBookTitle(poem.poem_title)}${poem.author}`].length
+    * metrics.metaLineHeight;
+  const metaWidth = metrics.metaFontSize;
   const isLeftToRight = layout.kind === 'upper-left-vertical';
   const left = isLeftToRight
-    ? layout.x + layout.width + POSTER_META_GAP
-    : layout.x - POSTER_META_GAP - metaWidth;
+    ? layout.x + layout.width + metrics.metaLineHeight - metaWidth / 2
+    : layout.x - metrics.metaLineHeight - metaWidth / 2;
 
   return {
     left,
@@ -2347,10 +2345,10 @@ function App() {
   const handleStartPosterTextEdit = () => {
     if (!selectedFavorite?.shareBackgroundImage || !isPosterTextLayout(selectedFavorite.shareLayout)) return;
 
-    setDraftPosterLayout({
+    setDraftPosterLayout(formatPosterTextLayoutForEditing(selectedFavorite, {
       ...selectedFavorite.shareLayout,
       fontScale: selectedFavorite.shareLayout.fontScale ?? 1,
-    });
+    }));
     setDraftPosterBranding(getFavoritePosterBranding(selectedFavorite));
     setIsPosterTextEditingContent(false);
     setIsPosterTextEditorOpen(true);
@@ -2799,7 +2797,7 @@ function App() {
       setIsPosterTextEditorOpen(false);
       setDraftPosterLayout(null);
       setIsPosterTextEditingContent(false);
-      setShareMessage('文字位置已更新。');
+      setShareMessage('');
     } catch (error) {
       setShareMessage(error instanceof Error ? error.message : '文字位置更新失败，请稍后再试。');
     } finally {
@@ -3560,6 +3558,14 @@ function App() {
                           lineHeight: posterTextPreviewMetrics && posterEditorScale
                             ? `${posterTextPreviewMetrics.lineHeight * posterEditorScale}px`
                             : undefined,
+                          letterSpacing: draftPosterLayout.kind.includes('vertical')
+                            && posterTextPreviewMetrics?.verticalCharAdvance
+                            && posterEditorScale
+                            ? `${Math.max(
+                                0,
+                                posterTextPreviewMetrics.verticalCharAdvance - posterTextPreviewMetrics.fontSize
+                              ) * posterEditorScale}px`
+                            : undefined,
                           textAlign: draftPosterLayout.kind.includes('vertical')
                             ? 'start'
                             : posterTextPreviewMetrics?.textAlign,
@@ -3618,10 +3624,7 @@ function App() {
                         }}
                       >
                         {draftPosterLayout.kind.includes('vertical') ? (
-                          <>
-                            <span>{formatVerticalBookTitle(selectedFavorite.poem_title)}</span>
-                            <span>{selectedFavorite.author}</span>
-                          </>
+                          <span>{formatVerticalBookTitle(selectedFavorite.poem_title)}{selectedFavorite.author}</span>
                         ) : (
                           <>《{selectedFavorite.poem_title}》 · {selectedFavorite.author}</>
                         )}

@@ -25,7 +25,7 @@ const DEFAULT_BRANDING_OPTIONS: PosterBrandingOptions = {
 };
 
 const POSTER_QR_RESERVED_ZONE = { left: 34, top: 1276, right: 172, bottom: 1414 };
-const POSTER_BRAND_RESERVED_ZONE = { left: 650, top: 1310, right: 1052, bottom: 1414 };
+const POSTER_BRAND_RESERVED_ZONE = { left: 790, top: 1310, right: 1052, bottom: 1414 };
 const POSTER_BRANDING_CLEARANCE = 18;
 const POSTER_LAYOUT_EDGE_PADDING = 18;
 
@@ -64,6 +64,7 @@ export type PosterTextPreviewMetrics = {
   metaLineHeight: number;
   textAlign: 'left' | 'right' | 'center';
   isVertical: boolean;
+  verticalCharAdvance?: number;
 };
 
 type RemoteShareImageResult = {
@@ -640,13 +641,14 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
     const lines = sourceLines.length > 0 ? sourceLines : [layout.text || poem.content];
     const lineHeight = Math.round(fontSize * 1.28);
     let measuredWidth = Math.max(1, ...lines.map((line) => context.measureText(line).width));
-    let measuredHeight = Math.max(lineHeight, lines.length * lineHeight);
+    let measuredHeight = Math.max(fontSize, (lines.length - 1) * lineHeight + fontSize);
     const fitScale = Math.min(1, maxWidth / measuredWidth, maxHeight / measuredHeight);
     if (fitScale < 1) {
       fontSize = Math.max(POSTER_UNBROKEN_MIN_FONT_SIZE, Math.floor(fontSize * fitScale));
       context.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
       measuredWidth = Math.max(1, ...lines.map((line) => context.measureText(line).width));
-      measuredHeight = Math.max(Math.round(fontSize * 1.28), lines.length * Math.round(fontSize * 1.28));
+      const fittedLineHeight = Math.round(fontSize * 1.28);
+      measuredHeight = Math.max(fontSize, (lines.length - 1) * fittedLineHeight + fontSize);
     }
     nextLayout.text = lines.join('\n');
     nextLayout.width = Math.ceil(measuredWidth);
@@ -659,7 +661,10 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
       const columnGap = Math.round(size * 0.86);
       return {
         width: Math.max(size, size + Math.max(0, columns.length - 1) * columnGap),
-        height: Math.max(lineHeight, Math.max(1, ...columns.map((column) => [...column].length)) * lineHeight),
+        height: Math.max(
+          size,
+          (Math.max(1, ...columns.map((column) => [...column].length)) - 1) * lineHeight + size
+        ),
       };
     };
     let measured = measureVertical(fontSize);
@@ -677,14 +682,14 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
     const lineHeightRatio = layout.kind === 'bottom-right-small' ? 1.45 : 1.48;
     let lineHeight = Math.round(fontSize * lineHeightRatio);
     let measuredWidth = Math.max(1, ...sourceLines.map((line) => context.measureText(line).width));
-    let measuredHeight = Math.max(lineHeight, sourceLines.length * lineHeight);
+    let measuredHeight = Math.max(fontSize, (sourceLines.length - 1) * lineHeight + fontSize);
     const fitScale = Math.min(1, maxWidth / measuredWidth, maxHeight / measuredHeight);
     if (fitScale < 1) {
       fontSize = Math.max(POSTER_UNBROKEN_MIN_FONT_SIZE, Math.floor(fontSize * fitScale));
       context.font = `${fontSize}px QianTuBiFeng, serif`;
       lineHeight = Math.round(fontSize * lineHeightRatio);
       measuredWidth = Math.max(1, ...sourceLines.map((line) => context.measureText(line).width));
-      measuredHeight = Math.max(lineHeight, sourceLines.length * lineHeight);
+      measuredHeight = Math.max(fontSize, (sourceLines.length - 1) * lineHeight + fontSize);
     }
     nextLayout.width = Math.ceil(measuredWidth);
     nextLayout.height = Math.ceil(measuredHeight);
@@ -713,7 +718,11 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
     const columnCount = Math.max(1, textLines.length);
     const maxChars = Math.max(1, ...textLines.map((line) => [...line.replace(/\s+/g, '')].length));
     nextLayout.width = Math.max(metrics.fontSize, metrics.fontSize + Math.max(0, columnCount - 1) * metrics.lineHeight);
-    nextLayout.height = Math.max(metrics.lineHeight, maxChars * metrics.lineHeight);
+    const verticalCharAdvance = metrics.verticalCharAdvance || metrics.fontSize;
+    nextLayout.height = Math.max(
+      metrics.fontSize,
+      (maxChars - 1) * verticalCharAdvance + metrics.fontSize
+    );
   } else {
     const context = createMeasureContext();
     if (context) {
@@ -726,7 +735,10 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
       );
       nextLayout.width = measuredWidth;
     }
-    nextLayout.height = Math.max(metrics.lineHeight, textLines.length * metrics.lineHeight);
+    nextLayout.height = Math.max(
+      metrics.fontSize,
+      (textLines.length - 1) * metrics.lineHeight + metrics.fontSize
+    );
   }
 
   nextLayout.width = Math.min(POSTER_WIDTH, Math.max(80, Math.ceil(nextLayout.width)));
@@ -780,7 +792,7 @@ function fitPoemLines(
     const lines = preservePoemLines(context, sourceLines, maxWidth);
     const lineHeight = Math.round(fontSize * lineHeightRatio);
 
-    if (lines && lines.length * lineHeight <= maxHeight) {
+    if (lines && (lines.length - 1) * lineHeight + fontSize <= maxHeight) {
       return { fontSize, lineHeight, lines };
     }
   }
@@ -808,7 +820,9 @@ function fitVerticalPoemColumns(
     const lineHeight = Math.round(fontSize * 1.22);
     const columnGap = Math.round(fontSize * 0.86);
     const totalWidth = fontSize + Math.max(0, columns.length - 1) * columnGap;
-    const fitsHeight = columns.every((column) => [...column].length * lineHeight <= maxHeight);
+    const fitsHeight = columns.every((column) => (
+      Math.max(fontSize, ([...column].length - 1) * lineHeight + fontSize) <= maxHeight
+    ));
 
     if (fitsHeight && totalWidth <= maxWidth) {
       return { fontSize, lineHeight, columnGap, columns };
@@ -877,7 +891,7 @@ function drawEnglishPosterText(
   const metaText = `《${poem.poem_title}》 — ${poem.author}`;
   const metaLines = wrapEnglishText(context, metaText, layout.width);
   const metaY = clamp(
-    layout.y + layout.height + metaLineHeight * 0.95,
+    layout.y + layout.height + metaLineHeight * 0.35,
     metaLineHeight,
     POSTER_HEIGHT - 28
   );
@@ -1172,6 +1186,7 @@ export function getPosterTextPreviewMetrics(
       metaLineHeight: Math.round(34 * metaScale),
       textAlign: 'left',
       isVertical: true,
+      verticalCharAdvance: fitted.lineHeight,
     };
   }
 
@@ -1243,8 +1258,15 @@ function drawPosterText(
       layout.x + layout.width + metaLineHeight
     );
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
-    drawVerticalColumns(context, [formatVerticalBookTitle(poem.poem_title)], metaStartX, layout.y, metaLineHeight, metaLineHeight, 1);
-    drawVerticalColumns(context, [poem.author], metaStartX + metaLineHeight, layout.y, metaLineHeight, metaLineHeight, 1);
+    drawVerticalColumns(
+      context,
+      [`${formatVerticalBookTitle(poem.poem_title)}${poem.author}`],
+      metaStartX,
+      layout.y,
+      metaLineHeight,
+      metaLineHeight,
+      1
+    );
   } else if (layout.kind === 'right-vertical') {
     const poemColumns = fitVerticalPoemColumns(
       getPoemSourceLines(layout.text),
@@ -1272,8 +1294,15 @@ function drawPosterText(
     const metaLineHeight = Math.round(34 * metaScale);
     const metaStartX = Math.max(metaFontSize / 2 + 18, layout.x - metaLineHeight);
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
-    drawVerticalColumns(context, [formatVerticalBookTitle(poem.poem_title)], metaStartX, layout.y, metaLineHeight, metaLineHeight, -1);
-    drawVerticalColumns(context, [poem.author], metaStartX - metaLineHeight, layout.y, metaLineHeight, metaLineHeight, -1);
+    drawVerticalColumns(
+      context,
+      [`${formatVerticalBookTitle(poem.poem_title)}${poem.author}`],
+      metaStartX,
+      layout.y,
+      metaLineHeight,
+      metaLineHeight,
+      -1
+    );
   } else {
     const isRight = layout.kind === 'bottom-right-small';
     const x = isRight ? layout.x + layout.width : layout.x;
@@ -1301,7 +1330,7 @@ function drawPosterText(
     const metaLineHeight = Math.round(metaFontSize * 1.35);
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
     const metaY = clamp(
-      maxTextBottom + metaLineHeight * 0.95,
+      maxTextBottom + metaLineHeight * 0.35,
       metaLineHeight,
       POSTER_HEIGHT - 28
     );
@@ -1396,13 +1425,12 @@ function getPosterLayoutContentBounds(poem: FavoritePoem, layout: PosterTextLayo
     };
   }
 
-  const titleLength = [...`《${poem.poem_title}》`].length;
-  const authorLength = [...poem.author].length;
-  const metaHeight = Math.max(titleLength, authorLength) * metrics.metaLineHeight;
-  const metaWidth = metrics.metaLineHeight * 2;
+  const metaHeight = [...`${formatVerticalBookTitle(poem.poem_title)}${poem.author}`].length
+    * metrics.metaLineHeight;
+  const metaWidth = metrics.metaFontSize;
   const metaLeft = layout.kind === 'upper-left-vertical'
-    ? layout.x + layout.width + 24
-    : layout.x - 24 - metaWidth;
+    ? layout.x + layout.width + metrics.metaLineHeight - metaWidth / 2
+    : layout.x - metrics.metaLineHeight - metaWidth / 2;
 
   return {
     left: Math.min(layout.x, metaLeft),
