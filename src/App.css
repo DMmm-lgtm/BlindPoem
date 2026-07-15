@@ -162,6 +162,42 @@
   color: #ffe9a8;
 }
 
+.favorites-secret-trigger {
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.developer-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 2rem;
+  z-index: 120;
+  max-width: calc(100vw - 2rem);
+  padding: 0.72rem 1rem;
+  border: 1px solid rgba(255, 232, 173, 0.24);
+  border-radius: 999px;
+  background: rgba(8, 11, 32, 0.9);
+  color: rgba(255, 239, 195, 0.92);
+  font-size: 0.82rem;
+  text-align: center;
+  transform: translateX(-50%);
+  box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+  animation: developerToastIn 0.2s ease-out;
+}
+
+@keyframes developerToastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 .favorites-header span,
 .favorite-detail-footer span,
 .share-message {
@@ -636,6 +672,27 @@
 .favorite-detail-footer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.developer-poster-options {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  margin-top: 0.55rem;
+}
+
+.developer-poster-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.developer-poster-options small {
+  flex-basis: 100%;
+  opacity: 0.7;
 }
 
 .share-message {

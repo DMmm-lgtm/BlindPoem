@@ -1,3 +1,9 @@
+# BlindPoem
+
+## 诗句去重
+
+每次点击都会优先请求 AI，并以 50% 概率按当前情绪选诗、50% 概率完全不参考情绪；发送给 AI 的提示词不会提及 emoji。浏览器最近最多 20 条结果会作为排除项交给 AI，未满 20 条时按实际已有的 N 条排除。AI 返回重复诗句时会再搜索一次，两次仍不可用才从数据库回退。数据库不区分新旧数据，从全部有效诗句中等概率随机抽取，并尽量排除当前浏览器最近 N 条。
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

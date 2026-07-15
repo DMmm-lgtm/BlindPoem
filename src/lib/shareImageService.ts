@@ -11,8 +11,18 @@ const SHARE_BACKGROUND_BUCKET = 'share-backgrounds';
 const WEBSITE_URL = 'https://www.blindpoem.space/';
 const WEBSITE_DISPLAY_URL = 'www.blindpoem.space';
 const WEBSITE_QR_CODE_PATH = '/blindpoem-site-qr.png';
-const BYPASS_SHARE_IMAGE_LIMIT =
+const ENV_BYPASS_SHARE_IMAGE_LIMIT =
   import.meta.env.DEV && import.meta.env.VITE_BYPASS_SHARE_IMAGE_LIMIT === 'true';
+
+export type PosterBrandingOptions = {
+  showQRCode: boolean;
+  showBranding: boolean;
+};
+
+const DEFAULT_BRANDING_OPTIONS: PosterBrandingOptions = {
+  showQRCode: true,
+  showBranding: true,
+};
 
 type PosterStyle = {
   name: string;
@@ -158,17 +168,17 @@ function writeDailyCount(count: number): void {
   window.localStorage.setItem(DAILY_LIMIT_KEY, JSON.stringify({ date: todayKey(), count }));
 }
 
-export function getRemainingShareImageGenerations(): number {
-  if (BYPASS_SHARE_IMAGE_LIMIT) return Number.POSITIVE_INFINITY;
+export function getRemainingShareImageGenerations(bypassLimit = false): number {
+  if (ENV_BYPASS_SHARE_IMAGE_LIMIT || bypassLimit) return Number.POSITIVE_INFINITY;
   return Math.max(0, DAILY_GENERATION_LIMIT - readDailyCount().count);
 }
 
-export function isShareImageGenerationLimitBypassed(): boolean {
-  return BYPASS_SHARE_IMAGE_LIMIT;
+export function isShareImageGenerationLimitBypassed(bypassLimit = false): boolean {
+  return ENV_BYPASS_SHARE_IMAGE_LIMIT || bypassLimit;
 }
 
-function consumeGenerationQuota(): boolean {
-  if (BYPASS_SHARE_IMAGE_LIMIT) return true;
+function consumeGenerationQuota(bypassLimit = false): boolean {
+  if (ENV_BYPASS_SHARE_IMAGE_LIMIT || bypassLimit) return true;
 
   const dailyCount = readDailyCount();
   if (dailyCount.count >= DAILY_GENERATION_LIMIT) return false;
@@ -177,12 +187,12 @@ function consumeGenerationQuota(): boolean {
   return true;
 }
 
-function hasAiGenerationQuota(): boolean {
-  return BYPASS_SHARE_IMAGE_LIMIT || readDailyCount().count < DAILY_GENERATION_LIMIT;
+function hasAiGenerationQuota(bypassLimit = false): boolean {
+  return ENV_BYPASS_SHARE_IMAGE_LIMIT || bypassLimit || readDailyCount().count < DAILY_GENERATION_LIMIT;
 }
 
-function assertAndConsumeAiGenerationQuota(): void {
-  if (!consumeGenerationQuota()) {
+function assertAndConsumeAiGenerationQuota(bypassLimit = false): void {
+  if (!consumeGenerationQuota(bypassLimit)) {
     throw new Error(`今日 AI 分享图生成次数已用完，明天会恢复 ${DAILY_GENERATION_LIMIT} 次。`);
   }
 }
@@ -482,7 +492,8 @@ function drawImageCover(
 
 function drawPosterFooter(
   context: CanvasRenderingContext2D,
-  siteQRCode: HTMLImageElement | null
+  siteQRCode: HTMLImageElement | null,
+  options: PosterBrandingOptions
 ) {
   const margin = 44;
   const qrSize = 92;
@@ -493,7 +504,7 @@ function drawPosterFooter(
 
   context.save();
 
-  if (siteQRCode) {
+  if (options.showQRCode && siteQRCode) {
     context.fillStyle = 'rgba(255, 255, 255, 0.9)';
     context.beginPath();
     context.roundRect(qrX, qrY, qrBoxSize, qrBoxSize, 10);
@@ -501,14 +512,16 @@ function drawPosterFooter(
     context.drawImage(siteQRCode, qrX + qrPadding, qrY + qrPadding, qrSize, qrSize);
   }
 
-  context.textAlign = 'right';
-  context.fillStyle = 'rgba(255, 244, 210, 0.66)';
-  context.font = '24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  context.fillText('BlindPoem 盲盒诗', POSTER_WIDTH - margin, POSTER_HEIGHT - margin - 26);
+  if (options.showBranding) {
+    context.textAlign = 'right';
+    context.fillStyle = 'rgba(255, 244, 210, 0.66)';
+    context.font = '24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    context.fillText('BlindPoem 盲盒诗', POSTER_WIDTH - margin, POSTER_HEIGHT - margin - 26);
 
-  context.fillStyle = 'rgba(255, 244, 210, 0.52)';
-  context.font = '20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  context.fillText(WEBSITE_DISPLAY_URL, POSTER_WIDTH - margin, POSTER_HEIGHT - margin);
+    context.fillStyle = 'rgba(255, 244, 210, 0.52)';
+    context.font = '20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    context.fillText(WEBSITE_DISPLAY_URL, POSTER_WIDTH - margin, POSTER_HEIGHT - margin);
+  }
 
   context.restore();
 }
@@ -1360,10 +1373,11 @@ function drawFallbackBackground(context: CanvasRenderingContext2D, style: Poster
 async function composeShareImage(
   poem: FavoritePoem,
   backgroundImage: string,
-  layout: PosterTextLayout
+  layout: PosterTextLayout,
+  brandingOptions: PosterBrandingOptions = DEFAULT_BRANDING_OPTIONS
 ): Promise<string> {
   const background = await loadImage(backgroundImage);
-  const siteQRCode = await loadImage(WEBSITE_QR_CODE_PATH);
+  const siteQRCode = brandingOptions.showQRCode ? await loadImage(WEBSITE_QR_CODE_PATH) : null;
   const style = POSTER_STYLES.find((item) => item.name === layout.styleName) || POSTER_STYLES[0];
   const [canvas, context] = createPosterCanvas();
 
@@ -1377,7 +1391,7 @@ async function composeShareImage(
   context.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
 
   drawPosterText(context, poem, style, layout);
-  drawPosterFooter(context, siteQRCode);
+  drawPosterFooter(context, siteQRCode, brandingOptions);
 
   return canvas.toDataURL('image/jpeg', 0.92);
 }
@@ -1385,10 +1399,11 @@ async function composeShareImage(
 export async function regenerateShareImageWithLayout(
   poem: FavoritePoem,
   backgroundImage: string,
-  layout: PosterTextLayout
+  layout: PosterTextLayout,
+  brandingOptions: PosterBrandingOptions = DEFAULT_BRANDING_OPTIONS
 ): Promise<ShareImageResult> {
   const formattedLayout = createFormattedPosterLayout(poem, layout);
-  const image = await composeShareImage(poem, backgroundImage, formattedLayout);
+  const image = await composeShareImage(poem, backgroundImage, formattedLayout, brandingOptions);
   return {
     image,
     backgroundImage,
@@ -1397,9 +1412,12 @@ export async function regenerateShareImageWithLayout(
   };
 }
 
-export async function generateShareImage(poem: FavoritePoem): Promise<ShareImageResult> {
+export async function generateShareImage(
+  poem: FavoritePoem,
+  options: { bypassLimit?: boolean; branding?: PosterBrandingOptions } = {}
+): Promise<ShareImageResult> {
   const style = POSTER_STYLES[Math.floor(Math.random() * POSTER_STYLES.length)];
-  const remoteResult = hasAiGenerationQuota() ? await tryGenerateRemoteShareImage(poem) : null;
+  const remoteResult = hasAiGenerationQuota(options.bypassLimit) ? await tryGenerateRemoteShareImage(poem) : null;
   const aiBackground = remoteResult ? await loadImage(remoteResult.image) : null;
   const semanticFallbackImage = aiBackground ? null : await findSemanticFallbackBackground(poem);
   const semanticFallbackBackground = semanticFallbackImage ? await loadImage(semanticFallbackImage) : null;
@@ -1409,7 +1427,7 @@ export async function generateShareImage(poem: FavoritePoem): Promise<ShareImage
   if (aiBackground) {
     // Only successful AI backgrounds consume the daily AI image quota.
     // The local canvas fallback poster is free and must not affect the counter.
-    assertAndConsumeAiGenerationQuota();
+    assertAndConsumeAiGenerationQuota(options.bypassLimit);
     drawImageCover(backgroundContext, aiBackground, POSTER_WIDTH, POSTER_HEIGHT);
     backgroundSource = 'ai';
   } else if (semanticFallbackBackground) {
@@ -1425,7 +1443,7 @@ export async function generateShareImage(poem: FavoritePoem): Promise<ShareImage
     : null;
   const backgroundImage = uploadedBackgroundImage || semanticFallbackImage || compressedBackgroundImage;
   const layout = createNaturalPosterTextLayout(poem, createPosterTextLayout(poem, style, backgroundContext));
-  const image = await composeShareImage(poem, backgroundImage, layout);
+  const image = await composeShareImage(poem, backgroundImage, layout, options.branding);
 
   return { image, backgroundImage, backgroundSource, layout };
 }

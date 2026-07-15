@@ -54,6 +54,8 @@ const LOCAL_FALLBACK_POEMS: Poem[] = [
 
 const LOCAL_POEM_CACHE_KEY = 'blindpoem.localPoems.v1';
 const MAX_LOCAL_POEMS = 80;
+const RECENT_POEMS_KEY = 'blindpoem.recentPoems.v1';
+const MAX_RECENT_POEMS = 20;
 const INVALID_AUTHOR_PATTERN = /^(未知|佚名|匿名|无|anonymous|unknown)$/i;
 
 function hasKnownAuthor(poem: Pick<Poem, 'author'>): boolean {
@@ -113,10 +115,42 @@ function savePoemToLocalCache(poem: Poem): boolean {
   }
 }
 
-function getLocalFallbackPoem(): Poem {
+function normalizePoemContent(content: string): string {
+  return content.replace(/[\s，。、；！？,.!?;:：“”"'‘’《》]/g, '').toLowerCase();
+}
+
+export function readRecentPoemContents(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(RECENT_POEMS_KEY) || '[]');
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string').slice(0, MAX_RECENT_POEMS)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberRecentPoem(content: string): void {
+  if (typeof window === 'undefined' || !content.trim()) return;
+  const normalized = normalizePoemContent(content);
+  const next = [content, ...readRecentPoemContents().filter(
+    (item) => normalizePoemContent(item) !== normalized
+  )].slice(0, MAX_RECENT_POEMS);
+  window.localStorage.setItem(RECENT_POEMS_KEY, JSON.stringify(next));
+}
+
+function getLocalFallbackPoem(excludedContents: string[] = []): Poem {
   const cachedPoems = readLocalPoems();
   const localFallbackPoems = LOCAL_FALLBACK_POEMS.filter(hasKnownAuthor);
-  const poemPool = cachedPoems.length > 0 ? cachedPoems : localFallbackPoems;
+  const excluded = new Set(excludedContents.map(normalizePoemContent));
+  const combinedPool = [...cachedPoems, ...localFallbackPoems].filter(
+    (poem, index, poems) => poems.findIndex(
+      (candidate) => normalizePoemContent(candidate.content) === normalizePoemContent(poem.content)
+    ) === index
+  );
+  const freshPool = combinedPool.filter((poem) => !excluded.has(normalizePoemContent(poem.content)));
+  const poemPool = freshPool.length > 0 ? freshPool : combinedPool;
   const randomIndex = Math.floor(Math.random() * poemPool.length);
   return poemPool[randomIndex];
 }
@@ -228,10 +262,10 @@ export async function incrementPoemLike(
 /**
  * 从 Supabase 随机读取一条诗句（容错机制）
  */
-export async function getRandomPoemFromDatabase(): Promise<Poem | null> {
+export async function getRandomPoemFromDatabase(excludedContents: string[] = []): Promise<Poem | null> {
   if (!isSupabaseConfigured || !supabase) {
     console.info('ℹ️ 未配置 Supabase，使用本地备用诗句');
-    return getLocalFallbackPoem();
+    return getLocalFallbackPoem(excludedContents);
   }
 
   try {
@@ -243,44 +277,65 @@ export async function getRandomPoemFromDatabase(): Promise<Poem | null> {
 
     if (countError) {
       console.error('❌ 查询 Supabase 诗句数量失败：', countError);
-      return getLocalFallbackPoem();
+      return getLocalFallbackPoem(excludedContents);
     }
 
     if (!count || count <= 0) {
       console.warn('⚠️ 数据库中还没有诗句');
-      return getLocalFallbackPoem();
+      return getLocalFallbackPoem(excludedContents);
     }
 
-    const randomOffset = Math.floor(Math.random() * count);
-    const { data, error } = await supabase
-      .from('poems')
-      .select('*')
-      .not('author', 'is', null)
-      .not('author', 'in', '("未知","佚名","匿名","无","anonymous","unknown")')
-      .range(randomOffset, randomOffset)
-      .limit(1);
+    const excluded = new Set(excludedContents.map(normalizePoemContent));
+    const attemptedOffsets = new Set<number>();
+    const maxAttempts = Math.min(count, excluded.size + 1);
+    let firstRandomPoem: Poem | null = null;
 
-    if (error) {
-      console.error('❌ 从 Supabase 读取失败：', error);
-      return getLocalFallbackPoem();
+    // Draw offsets uniformly from the entire filtered table. Sampling without
+    // replacement preserves equal probability while allowing recent results to be rejected.
+    while (attemptedOffsets.size < maxAttempts) {
+      let randomOffset = Math.floor(Math.random() * count);
+      while (attemptedOffsets.has(randomOffset)) {
+        randomOffset = Math.floor(Math.random() * count);
+      }
+      attemptedOffsets.add(randomOffset);
+
+      const { data, error } = await supabase
+        .from('poems')
+        .select('*')
+        .not('author', 'is', null)
+        .not('author', 'in', '("未知","佚名","匿名","无","anonymous","unknown")')
+        .order('created_at', { ascending: false })
+        .range(randomOffset, randomOffset)
+        .limit(1);
+
+      if (error) {
+        console.error('❌ 从 Supabase 读取失败：', error);
+        return getLocalFallbackPoem(excludedContents);
+      }
+
+      const candidate = data?.find(hasKnownAuthor) || null;
+      if (!candidate) continue;
+      firstRandomPoem ||= candidate;
+
+      if (!excluded.has(normalizePoemContent(candidate.content))) {
+        console.log('✅ 从全部数据库中随机读取到诗句：', candidate.content);
+        return candidate;
+      }
     }
 
-    if (!data || data.length === 0) {
-      console.warn('⚠️ 数据库中还没有诗句');
-      return getLocalFallbackPoem();
-    }
-
-    const randomPoem = data.find(hasKnownAuthor);
+    // This only happens when the database itself contains no poem outside the
+    // browser's recent list. Returning the first uniform draw is then unavoidable.
+    const randomPoem = firstRandomPoem;
 
     if (!randomPoem) {
       console.warn('⚠️ 随机诗句作者未知，改用本地备用诗句');
-      return getLocalFallbackPoem();
+      return getLocalFallbackPoem(excludedContents);
     }
 
-    console.log('✅ 从数据库读取到随机诗句：', randomPoem.content);
+    console.log('⚠️ 数据库诗句均在最近记录中，允许重复返回：', randomPoem.content);
     return randomPoem;
   } catch (error) {
     console.error('❌ getRandomPoemFromDatabase 错误：', error);
-    return getLocalFallbackPoem();
+    return getLocalFallbackPoem(excludedContents);
   }
 }

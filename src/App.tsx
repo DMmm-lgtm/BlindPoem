@@ -1,7 +1,13 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
 import { generatePoem } from './lib/aiClient';
-import { savePoemToDatabase, getRandomPoemFromDatabase, incrementPoemLike } from './lib/poemService';
+import {
+  savePoemToDatabase,
+  getRandomPoemFromDatabase,
+  incrementPoemLike,
+  readRecentPoemContents,
+  rememberRecentPoem,
+} from './lib/poemService';
 import {
   addFavorite,
   getFavoriteId,
@@ -23,6 +29,7 @@ import {
   SHARE_POSTER_SIZE,
 } from './lib/shareImageService';
 import type { PosterLayoutKind, PosterTextLayout, PosterTextPreviewMetrics } from './lib/shareImageService';
+import type { PosterBrandingOptions } from './lib/shareImageService';
 import './App.css';
 
 // 🎲 Fisher-Yates 洗牌算法 - 用于随机打乱数组
@@ -165,6 +172,13 @@ const WELCOME_LAYER_Z_INDEX = {
   intro: 100,
   complete: 5,
   prompt: 20,
+};
+
+const DEVELOPER_UNLOCK = {
+  clicksRequired: 5,
+  clickWindowMs: 3000,
+  secondStageWindowMs: 30000,
+  activeDurationMs: 5 * 60 * 1000,
 };
 
 const CURTAIN_BEZIER = {
@@ -323,7 +337,7 @@ function formatPoemForDisplay(content: string): string {
   const trimmed = content.trim();
   if (!trimmed) return '';
 
-  const explicitLineText = trimmed.replace(/[\/／\\|]+/g, '\n');
+  const explicitLineText = trimmed.replace(/[/／\\|]+/g, '\n');
   if (/\r?\n/.test(explicitLineText)) {
     return normalizeDisplayLines(explicitLineText.split(/\r?\n/)) || trimmed;
   }
@@ -659,6 +673,13 @@ function App() {
     poem_title: string;
     author: string;
   } | null>(null);
+  // Developer access is unlocked through the two-stage hidden click sequence.
+  const [isDeveloperMode, setIsDeveloperMode] = useState(false);
+  const [developerMessage, setDeveloperMessage] = useState('');
+  const [posterBranding, setPosterBranding] = useState<PosterBrandingOptions>({
+    showQRCode: true,
+    showBranding: true,
+  });
 
   // 赞赏功能状态
   const [showLoveButton, setShowLoveButton] = useState(false);  // 控制爱心按钮显示
@@ -683,6 +704,11 @@ function App() {
   const posterDragRef = useRef<PosterEditorGesture | null>(null);
   const posterPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const sharePreviewRestoreAttemptsRef = useRef<Set<string>>(new Set());
+  const developerFirstStageClicksRef = useRef<number[]>([]);
+  const developerSecondStageClicksRef = useRef<number[]>([]);
+  const developerSecondStageExpiresAtRef = useRef(0);
+  const developerModeTimerRef = useRef<number | null>(null);
+  const developerMessageTimerRef = useRef<number | null>(null);
 
   type StarParticle = {
     id: string;
@@ -720,6 +746,70 @@ function App() {
     '沉浸在生活外',
     '生活在诗句里',
   ];
+
+  const showDeveloperMessage = useCallback((message: string) => {
+    setDeveloperMessage(message);
+    if (developerMessageTimerRef.current) {
+      window.clearTimeout(developerMessageTimerRef.current);
+    }
+    developerMessageTimerRef.current = window.setTimeout(() => {
+      setDeveloperMessage('');
+      developerMessageTimerRef.current = null;
+    }, 2800);
+  }, []);
+
+  const handleDeveloperFirstStageClick = useCallback(() => {
+    if (welcomePhase !== 'complete' || isDeveloperMode) return;
+
+    const now = Date.now();
+    const recentClicks = developerFirstStageClicksRef.current
+      .filter((timestamp) => now - timestamp <= DEVELOPER_UNLOCK.clickWindowMs);
+    recentClicks.push(now);
+    developerFirstStageClicksRef.current = recentClicks;
+
+    if (recentClicks.length >= DEVELOPER_UNLOCK.clicksRequired) {
+      developerFirstStageClicksRef.current = [];
+      developerSecondStageClicksRef.current = [];
+      developerSecondStageExpiresAtRef.current = now + DEVELOPER_UNLOCK.secondStageWindowMs;
+    }
+  }, [isDeveloperMode, welcomePhase]);
+
+  const handleDeveloperSecondStageClick = useCallback(() => {
+    if (isDeveloperMode) return;
+
+    const now = Date.now();
+    if (now > developerSecondStageExpiresAtRef.current) {
+      developerSecondStageClicksRef.current = [];
+      return;
+    }
+
+    const recentClicks = developerSecondStageClicksRef.current
+      .filter((timestamp) => now - timestamp <= DEVELOPER_UNLOCK.clickWindowMs);
+    recentClicks.push(now);
+    developerSecondStageClicksRef.current = recentClicks;
+
+    if (recentClicks.length < DEVELOPER_UNLOCK.clicksRequired) return;
+
+    developerSecondStageClicksRef.current = [];
+    developerSecondStageExpiresAtRef.current = 0;
+    setIsDeveloperMode(true);
+    showDeveloperMessage('开发者模式已开启，5 分钟后自动退出');
+
+    if (developerModeTimerRef.current) {
+      window.clearTimeout(developerModeTimerRef.current);
+    }
+    developerModeTimerRef.current = window.setTimeout(() => {
+      setIsDeveloperMode(false);
+      setPosterBranding({ showQRCode: true, showBranding: true });
+      showDeveloperMessage('开发者模式已自动退出');
+      developerModeTimerRef.current = null;
+    }, DEVELOPER_UNLOCK.activeDurationMs);
+  }, [isDeveloperMode, showDeveloperMessage]);
+
+  useEffect(() => () => {
+    if (developerModeTimerRef.current) window.clearTimeout(developerModeTimerRef.current);
+    if (developerMessageTimerRef.current) window.clearTimeout(developerMessageTimerRef.current);
+  }, []);
 
   const currentFavoriteId = useMemo(() => (
     poemData
@@ -948,7 +1038,8 @@ function App() {
         const result = await regenerateShareImageWithLayout(
           selectedFavorite,
           backgroundImage,
-          shareLayout
+          shareLayout,
+          posterBranding
         );
 
         if (isCancelled) return;
@@ -975,7 +1066,7 @@ function App() {
     return () => {
       isCancelled = true;
     };
-  }, [favorites, selectedFavorite]);
+  }, [favorites, posterBranding, selectedFavorite]);
 
   useEffect(() => {
     setIsLoved(Boolean(currentFavoriteId && favorites.some((favorite) => favorite.id === currentFavoriteId)));
@@ -2228,7 +2319,10 @@ function App() {
     setShareMessage('');
 
     try {
-      const result = await generateShareImage(selectedFavorite);
+      const result = await generateShareImage(selectedFavorite, {
+        bypassLimit: isDeveloperMode,
+        branding: posterBranding,
+      });
       const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
         shareBackgroundImage: result.backgroundImage,
         shareBackgroundSource: result.backgroundSource,
@@ -2663,7 +2757,8 @@ function App() {
       const result = await regenerateShareImageWithLayout(
         selectedFavorite,
         selectedFavorite.shareBackgroundImage,
-        finalLayout
+        finalLayout,
+        posterBranding
       );
       const nextFavorites = updateFavoriteShareImage(selectedFavorite.id, result.image, {
         shareBackgroundImage: result.backgroundImage,
@@ -2889,8 +2984,32 @@ function App() {
 
     try {
       console.log('📡 准备调用诗句生成 API...');
-      // 调用服务端 AI API
-      const poem = await generatePoem(keyword, mood);
+      const recentPoems = readRecentPoemContents();
+      const normalizedForComparison = (content: string) => content
+        .replace(/[\s，。、；！？,.!?;:：“”"'‘’《》]/g, '')
+        .toLowerCase();
+      let poem: Awaited<ReturnType<typeof generatePoem>> | null = null;
+
+      // AI 返回最近 N 条中的重复内容时，再搜索一次；两次都不可用才进入数据库回退。
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const candidate = await generatePoem(keyword, mood, recentPoems);
+        const normalizedCandidate = normalizedForComparison(formatPoemForDisplay(candidate.content));
+        const isRecentDuplicate = recentPoems.some(
+          (content) => normalizedForComparison(content) === normalizedCandidate
+        );
+
+        if (!isRecentDuplicate) {
+          poem = candidate;
+          break;
+        }
+
+        console.warn(`⚠️ AI 第 ${attempt} 次返回最近出现过的诗句${attempt < 2 ? '，重新搜索' : ''}`);
+      }
+
+      if (!poem) {
+        throw new Error('AI 两次返回了最近出现过的诗句');
+      }
+
       console.log('✅ 诗句生成 API 返回成功:', poem);
       const normalizedContent = formatPoemForDisplay(poem.content);
       
@@ -2900,6 +3019,7 @@ function App() {
         poem_title: poem.poem_title,
         author: poem.author,
       });
+      rememberRecentPoem(normalizedContent);
       scheduleEmojiReplacementAfterPoemAppears();
 
       // 异步保存到数据库（不阻塞 UI）
@@ -2917,7 +3037,7 @@ function App() {
 
       // 容错机制：从数据库随机读取
       console.log('🔄 尝试从数据库读取备用诗句...');
-      const fallbackPoem = await getRandomPoemFromDatabase();
+      const fallbackPoem = await getRandomPoemFromDatabase(readRecentPoemContents());
 
       if (fallbackPoem) {
         const normalizedContent = formatPoemForDisplay(fallbackPoem.content);
@@ -2926,6 +3046,7 @@ function App() {
           poem_title: fallbackPoem.poem_title || '未知',
           author: fallbackPoem.author || '佚名',
         });
+        rememberRecentPoem(normalizedContent);
         scheduleEmojiReplacementAfterPoemAppears();
         console.log('✅ 使用数据库备用诗句');
       } else {
@@ -2982,6 +3103,7 @@ function App() {
               return (
                 <div
                   key={index}
+                  onPointerUp={shouldKeep ? handleDeveloperFirstStageClick : undefined}
                   ref={(element) => {
                     welcomeLineRefs.current[index] = element;
                   }}
@@ -3050,6 +3172,9 @@ function App() {
                         : `welcomeBottomLineSettle ${isSkipExit && skipMode !== 'with-last' ? skipBottomLineSettleDuration : bottomLineSettleDuration}s ease-out forwards`,
                       transformOrigin: 'center center',
                       maxWidth: isMobile ? '95vw' : 'none', // 移动端增大容器宽度
+                      pointerEvents: 'auto',
+                      touchAction: 'manipulation',
+                      userSelect: 'none',
                     }),
                     // 其他句子保持淡出状态
                     ...(welcomePhase === 'complete' && !shouldKeep && {
@@ -3223,7 +3348,10 @@ function App() {
         >
           <aside className="favorites-drawer" onClick={(event) => event.stopPropagation()}>
             <div className="favorites-header">
-              <div>
+              <div
+                className="favorites-secret-trigger"
+                onPointerUp={handleDeveloperSecondStageClick}
+              >
                 <p>收藏夹</p>
                 <span>{favorites.length} 句星光</span>
               </div>
@@ -3517,10 +3645,37 @@ function App() {
 
                 <div className="favorite-detail-footer">
                   <span>
-                    {isShareImageGenerationLimitBypassed()
+                    {isShareImageGenerationLimitBypassed(isDeveloperMode)
                       ? '开发模式：生成次数不限'
-                      : `今日还可生成 ${getRemainingShareImageGenerations()} 张`}
+                      : `今日还可生成 ${getRemainingShareImageGenerations(isDeveloperMode)} 张`}
                   </span>
+                  {isDeveloperMode && (
+                    <div className="developer-poster-options">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={posterBranding.showQRCode}
+                          onChange={(event) => setPosterBranding((current) => ({
+                            ...current,
+                            showQRCode: event.target.checked,
+                          }))}
+                        />
+                        二维码
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={posterBranding.showBranding}
+                          onChange={(event) => setPosterBranding((current) => ({
+                            ...current,
+                            showBranding: event.target.checked,
+                          }))}
+                        />
+                        Logo 与网址
+                      </label>
+                      <small>切换后点“调整→完成”或“重新生成图”应用。</small>
+                    </div>
+                  )}
                 </div>
 
                 {shareMessage && <p className="share-message">{shareMessage}</p>}
@@ -3783,6 +3938,12 @@ function App() {
               <span>.</span>
             </span>
           </div>
+        </div>
+      )}
+
+      {developerMessage && (
+        <div className="developer-toast" role="status" aria-live="polite">
+          {developerMessage}
         </div>
       )}
     </div>

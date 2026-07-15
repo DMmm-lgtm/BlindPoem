@@ -4,13 +4,16 @@ export interface PoemResponse {
   author: string;       // 作者
 }
 
+const MAX_EXCLUDED_POEMS = 20;
+
 /**
  * 根据心情关键词生成诗句（调用后端 Vercel Function）
  * API Key 只在服务端使用，前端不会暴露密钥。
  */
 export async function generatePoem(
   keyword: string,
-  moodName: string
+  moodName: string,
+  excludedContents: string[] = []
 ): Promise<PoemResponse> {
   console.log(`🎯 生成诗句 - 关键词: ${keyword}, 心情: ${moodName}`);
 
@@ -26,7 +29,11 @@ export async function generatePoem(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ keyword, moodName }),
+      body: JSON.stringify({
+        keyword,
+        moodName,
+        excludedContents: excludedContents.slice(0, MAX_EXCLUDED_POEMS),
+      }),
       signal: controller.signal,
     });
 

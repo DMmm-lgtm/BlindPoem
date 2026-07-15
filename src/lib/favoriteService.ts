@@ -29,7 +29,7 @@ function isStorageQuotaError(error: unknown): boolean {
 
 function normalizeFavoriteContent(content: string): string {
   const lines = content
-    .replace(/[\/／\\|]+/g, '\n')
+    .replace(/[/／\\|]+/g, '\n')
     .replace(/[，。、；！？,.!?;:：]+/g, '\n')
     .split(/\r?\n/)
     .map((line) => line.replace(/[“”"‘’'《》〈〉「」『』（）()【】[\]{}]/g, '').trim())
