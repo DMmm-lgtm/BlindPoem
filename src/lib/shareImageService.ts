@@ -719,10 +719,10 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
     const maxChars = Math.max(1, ...textLines.map((line) => [...line.replace(/\s+/g, '')].length));
     nextLayout.width = Math.max(metrics.fontSize, metrics.fontSize + Math.max(0, columnCount - 1) * metrics.lineHeight);
     const verticalCharAdvance = metrics.verticalCharAdvance || metrics.fontSize;
-    nextLayout.height = Math.max(
-      metrics.fontSize,
-      (maxChars - 1) * verticalCharAdvance + metrics.fontSize
-    );
+    // The browser's vertical textarea reserves the full character advance for
+    // every glyph (including the last one). Using visible glyph bounds here
+    // makes the last character wrap into a new column in the editor.
+    nextLayout.height = Math.max(verticalCharAdvance, maxChars * verticalCharAdvance);
   } else {
     const context = createMeasureContext();
     if (context) {
@@ -735,10 +735,8 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
       );
       nextLayout.width = measuredWidth;
     }
-    nextLayout.height = Math.max(
-      metrics.fontSize,
-      (textLines.length - 1) * metrics.lineHeight + metrics.fontSize
-    );
+    // Match the DOM line-box model used by the textarea preview.
+    nextLayout.height = Math.max(metrics.lineHeight, textLines.length * metrics.lineHeight);
   }
 
   nextLayout.width = Math.min(POSTER_WIDTH, Math.max(80, Math.ceil(nextLayout.width)));

@@ -531,7 +531,9 @@
   height: 100%;
   padding: 0;
   text-orientation: upright;
-  white-space: pre-wrap;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: keep-all;
   text-align: start;
 }
 
