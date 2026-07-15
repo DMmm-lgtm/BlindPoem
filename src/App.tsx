@@ -393,7 +393,7 @@ const POSTER_RESIZE_HANDLES: PosterResizeHandle[] = [
 
 const POSTER_EDGE_PADDING = 18;
 const POSTER_EDITOR_MIN_BOX_SIZE = 36;
-const POSTER_EDITOR_MIN_FONT_SCALE = 0.35;
+const POSTER_EDITOR_MIN_FONT_SCALE = 0.45;
 const POSTER_EDITOR_MAX_FONT_SCALE = 2.8;
 const POSTER_QR_RESERVED_ZONE = { left: 34, top: 1276, right: 172, bottom: 1414 };
 const POSTER_BRAND_RESERVED_ZONE = { left: 790, top: 1310, right: 1052, bottom: 1414 };
@@ -2386,10 +2386,12 @@ function App() {
     const nextTextWithoutBreaks = nextText.replace(/\n/g, '');
     if (nextTextWithoutBreaks !== originalText) return;
 
-    setDraftPosterLayout({
-      ...draftPosterLayout,
-      text: nextText,
-    });
+    setDraftPosterLayout(clampDraftPosterLayout(
+      formatPosterTextLayoutForEditing(selectedFavorite, {
+        ...draftPosterLayout,
+        text: nextText,
+      })
+    ));
   };
 
   const clampDraftPosterLayout = (
@@ -2478,7 +2480,10 @@ function App() {
     const nextSize = POSTER_EDITOR_LAYOUT_SIZES[nextKind];
 
     setDraftPosterLayout(clampDraftPosterLayout(
-      createPosterLayoutForKind(selectedFavorite, draftPosterLayout, nextKind, nextSize)
+      formatPosterTextLayoutForEditing(
+        selectedFavorite,
+        createPosterLayoutForKind(selectedFavorite, draftPosterLayout, nextKind, nextSize)
+      )
     ));
   };
 
@@ -2490,10 +2495,13 @@ function App() {
       : 'upper-left-vertical';
 
     setDraftPosterLayout(clampDraftPosterLayout(
-      createPosterLayoutForKind(selectedFavorite, draftPosterLayout, nextKind, {
-        width: draftPosterLayout.width,
-        height: draftPosterLayout.height,
-      })
+      formatPosterTextLayoutForEditing(
+        selectedFavorite,
+        createPosterLayoutForKind(selectedFavorite, draftPosterLayout, nextKind, {
+          width: draftPosterLayout.width,
+          height: draftPosterLayout.height,
+        })
+      )
     ));
   };
 

@@ -120,6 +120,7 @@ const POSTER_SAFE_AREA = {
   bottom: 190,
 };
 const POSTER_UNBROKEN_MIN_FONT_SIZE = 12;
+const POSTER_MIN_FONT_SCALE = 0.45;
 
 const POSTER_TEXT_BASE_LAYOUTS: Record<PosterLayoutKind, Pick<PosterTextLayout, 'x' | 'y' | 'width' | 'height'>> = {
   'bottom-left': { x: 92, y: 900, width: 690, height: 310 },
@@ -142,7 +143,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function getPosterFontScale(layout: PosterTextLayout): number {
-  return clamp(layout.fontScale ?? 1, 0.35, 2.8);
+  return clamp(layout.fontScale ?? 1, POSTER_MIN_FONT_SCALE, 2.8);
 }
 
 function getMetaScaleFromFontSize(fontSize: number): number {
