@@ -351,6 +351,7 @@
   border-radius: 0.5rem;
   background: rgba(0, 0, 0, 0.18);
   touch-action: none;
+  container-type: inline-size;
 }
 
 .poster-editor-background {
@@ -410,19 +411,19 @@
 
 .poster-branding-remove {
   position: absolute;
-  top: -0.7rem;
-  left: -0.7rem;
+  top: 0.12rem;
+  right: 0.12rem;
   z-index: 6;
   display: grid;
   place-items: center;
-  width: 1.45rem;
-  height: 1.45rem;
+  width: clamp(1.05rem, 6cqw, 1.45rem);
+  height: clamp(1.05rem, 6cqw, 1.45rem);
   padding: 0;
   border: 1px solid rgba(255, 232, 173, 0.75);
   border-radius: 999px;
   background: rgba(8, 10, 24, 0.88);
   color: rgba(255, 242, 207, 0.96);
-  font-size: 1.05rem;
+  font-size: clamp(0.72rem, 4.5cqw, 1.05rem);
   line-height: 1;
   cursor: pointer;
   pointer-events: auto;
@@ -430,31 +431,33 @@
 }
 
 .poster-branding-logo .poster-branding-remove {
-  right: -0.7rem;
-  left: auto;
+  top: 50%;
+  right: calc(100% + 0.35rem);
+  transform: translateY(-50%);
 }
 
 .poster-branding-add-controls {
   position: absolute;
-  top: 0.8rem;
-  left: 0.8rem;
+  top: clamp(0.35rem, 3cqw, 0.8rem);
+  left: clamp(0.35rem, 3cqw, 0.8rem);
   z-index: 5;
   display: flex;
-  gap: 0.4rem;
+  max-width: calc(100% - 0.7rem);
+  gap: clamp(0.2rem, 1.5cqw, 0.4rem);
 }
 
 .poster-branding-add-controls button {
   position: relative;
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
+  width: clamp(1.55rem, 8cqw, 2rem);
+  height: clamp(1.55rem, 8cqw, 2rem);
   padding: 0;
   border: 1px solid rgba(255, 232, 173, 0.72);
   border-radius: 999px;
   background: rgba(10, 11, 24, 0.68);
   color: rgba(255, 238, 191, 0.96);
-  font-size: 0.62rem;
+  font-size: clamp(0.48rem, 2.5cqw, 0.62rem);
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -463,7 +466,7 @@
   position: absolute;
   top: -0.3rem;
   right: -0.22rem;
-  font-size: 0.85rem;
+  font-size: clamp(0.65rem, 3.5cqw, 0.85rem);
   font-weight: 500;
 }
 
@@ -583,11 +586,12 @@
 
 .poster-editor-actions {
   position: absolute;
-  right: 0.8rem;
-  bottom: 0.8rem;
+  left: 50%;
+  bottom: clamp(0.35rem, 3cqw, 0.8rem);
+  transform: translateX(-50%);
   z-index: 4;
   display: flex;
-  gap: 0.4rem;
+  gap: clamp(0.2rem, 1.5cqw, 0.4rem);
 }
 
 .poster-editor-button {
@@ -994,7 +998,7 @@
   }
 
   /* Emoji按钮 */
-  button[title] {
+  .emoji-container button[title] {
     font-size: 2.75rem !important;
   }
 
@@ -1052,7 +1056,7 @@
   }
 
   /* Emoji按钮 */
-  button[title] {
+  .emoji-container button[title] {
     font-size: 2.25rem !important;
   }
 
