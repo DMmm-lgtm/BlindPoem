@@ -393,10 +393,18 @@ const POSTER_RESIZE_HANDLES: PosterResizeHandle[] = [
 
 const POSTER_EDGE_PADDING = 18;
 const POSTER_EDITOR_MIN_BOX_SIZE = 36;
-const POSTER_EDITOR_MIN_FONT_SCALE = 0.45;
+const POSTER_EDITOR_VERTICAL_BASE_FONT_SIZE = 52;
+const POSTER_EDITOR_MIN_FONT_SIZE = 24;
+const POSTER_EDITOR_DEFAULT_MIN_FONT_SCALE = 0.45;
 const POSTER_EDITOR_MAX_FONT_SCALE = 2.8;
 const POSTER_QR_RESERVED_ZONE = { left: 34, top: 1276, right: 172, bottom: 1414 };
 const POSTER_BRAND_RESERVED_ZONE = { left: 790, top: 1310, right: 1052, bottom: 1414 };
+
+function getPosterEditorMinFontScale(layout: PosterTextLayout): number {
+  return layout.kind.includes('vertical')
+    ? POSTER_EDITOR_MIN_FONT_SIZE / POSTER_EDITOR_VERTICAL_BASE_FONT_SIZE
+    : POSTER_EDITOR_DEFAULT_MIN_FONT_SCALE;
+}
 
 type PosterEditorIconName = 'arrow-left' | 'arrow-right' | 'layout-horizontal' | 'layout-vertical' | 'check' | 'reset' | 'close';
 
@@ -2402,7 +2410,7 @@ function App() {
       ...layout,
       width: clamp(layout.width, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.width),
       height: clamp(layout.height, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.height),
-      fontScale: clamp(layout.fontScale ?? 1, POSTER_EDITOR_MIN_FONT_SCALE, POSTER_EDITOR_MAX_FONT_SCALE),
+      fontScale: clamp(layout.fontScale ?? 1, getPosterEditorMinFontScale(layout), POSTER_EDITOR_MAX_FONT_SCALE),
     };
 
     nextLayout.x = clamp(nextLayout.x, 0, SHARE_POSTER_SIZE.width - nextLayout.width);
@@ -2467,7 +2475,7 @@ function App() {
     y: clamp(layout.y, 0, SHARE_POSTER_SIZE.height - Math.min(layout.height, SHARE_POSTER_SIZE.height)),
     width: clamp(layout.width, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.width),
     height: clamp(layout.height, POSTER_EDITOR_MIN_BOX_SIZE, SHARE_POSTER_SIZE.height),
-    fontScale: clamp(layout.fontScale ?? 1, POSTER_EDITOR_MIN_FONT_SCALE, POSTER_EDITOR_MAX_FONT_SCALE),
+    fontScale: clamp(layout.fontScale ?? 1, getPosterEditorMinFontScale(layout), POSTER_EDITOR_MAX_FONT_SCALE),
   });
 
   const handleTogglePosterTextDirection = () => {
@@ -2526,7 +2534,7 @@ function App() {
     const startWidth = (baseLayout.width / SHARE_POSTER_SIZE.width) * frameRect.width;
     const startHeight = (baseLayout.height / SHARE_POSTER_SIZE.height) * frameRect.height;
     const baseFontScale = baseLayout.fontScale ?? 1;
-    const minFontSizeScale = POSTER_EDITOR_MIN_FONT_SCALE / Math.max(0.01, baseFontScale);
+    const minFontSizeScale = getPosterEditorMinFontScale(baseLayout) / Math.max(0.01, baseFontScale);
     const maxFontSizeScale = POSTER_EDITOR_MAX_FONT_SCALE / Math.max(0.01, baseFontScale);
     const rawSizeScale = Math.max(width / Math.max(1, startWidth), height / Math.max(1, startHeight));
     const sizeScale = clampScale(rawSizeScale, minFontSizeScale, maxFontSizeScale);
@@ -2639,7 +2647,7 @@ function App() {
       const minWidth = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.width) * frameRect.width;
       const minHeight = (POSTER_EDITOR_MIN_BOX_SIZE / SHARE_POSTER_SIZE.height) * frameRect.height;
       const baseFontScale = startLayout.fontScale ?? 1;
-      const minFontSizeScale = POSTER_EDITOR_MIN_FONT_SCALE / Math.max(0.01, baseFontScale);
+      const minFontSizeScale = getPosterEditorMinFontScale(startLayout) / Math.max(0.01, baseFontScale);
       const maxFontSizeScale = POSTER_EDITOR_MAX_FONT_SCALE / Math.max(0.01, baseFontScale);
       const minScale = Math.max(minWidth / startWidth, minHeight / startHeight, minFontSizeScale);
       const rawScale = distance / posterDragRef.current.startDistance;
@@ -2686,7 +2694,7 @@ function App() {
       const pointerX = event.clientX - frameRect.left;
       const pointerY = event.clientY - frameRect.top;
       const baseFontScale = startLayout.fontScale ?? 1;
-      const minFontSizeScale = POSTER_EDITOR_MIN_FONT_SCALE / Math.max(0.01, baseFontScale);
+      const minFontSizeScale = getPosterEditorMinFontScale(startLayout) / Math.max(0.01, baseFontScale);
       const maxFontSizeScale = POSTER_EDITOR_MAX_FONT_SCALE / Math.max(0.01, baseFontScale);
       const minScale = Math.max(minWidth / startWidth, minHeight / startHeight, minFontSizeScale);
       let rawScale = 1;

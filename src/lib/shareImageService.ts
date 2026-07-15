@@ -120,7 +120,9 @@ const POSTER_SAFE_AREA = {
   bottom: 190,
 };
 const POSTER_UNBROKEN_MIN_FONT_SIZE = 12;
-const POSTER_MIN_FONT_SCALE = 0.45;
+const POSTER_VERTICAL_BASE_FONT_SIZE = 52;
+const POSTER_EDITOR_MIN_FONT_SIZE = 24;
+const POSTER_DEFAULT_MIN_FONT_SCALE = 0.45;
 
 const POSTER_TEXT_BASE_LAYOUTS: Record<PosterLayoutKind, Pick<PosterTextLayout, 'x' | 'y' | 'width' | 'height'>> = {
   'bottom-left': { x: 92, y: 900, width: 690, height: 310 },
@@ -143,7 +145,10 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function getPosterFontScale(layout: PosterTextLayout): number {
-  return clamp(layout.fontScale ?? 1, POSTER_MIN_FONT_SCALE, 2.8);
+  const minScale = layout.kind.includes('vertical')
+    ? POSTER_EDITOR_MIN_FONT_SIZE / POSTER_VERTICAL_BASE_FONT_SIZE
+    : POSTER_DEFAULT_MIN_FONT_SCALE;
+  return clamp(layout.fontScale ?? 1, minScale, 2.8);
 }
 
 function getMetaScaleFromFontSize(fontSize: number): number {
@@ -721,19 +726,31 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
       : formattedLayout.kind === 'bottom-right-small'
         ? 42
         : 56;
-  nextLayout.fontScale = metrics.fontSize / baseFontSize;
 
   if (formattedLayout.kind.includes('vertical')) {
     const columnCount = Math.max(1, textLines.length);
     const maxChars = Math.max(1, ...textLines.map((line) => [...line.replace(/\s+/g, '')].length));
-    nextLayout.width = Math.max(metrics.fontSize, metrics.fontSize + Math.max(0, columnCount - 1) * metrics.lineHeight);
-    const verticalCharAdvance = metrics.verticalCharAdvance || metrics.fontSize;
+    // The editor uses one canonical integer font size. Box dimensions, character
+    // advance and column gap are all derived from it, so fitting cannot silently
+    // shrink the glyphs below the size recorded in fontScale.
+    const editorFontSize = Math.max(
+      POSTER_EDITOR_MIN_FONT_SIZE,
+      Math.round(POSTER_VERTICAL_BASE_FONT_SIZE * getPosterFontScale(formattedLayout))
+    );
+    const verticalCharAdvance = Math.round(editorFontSize * 1.22);
+    const columnGap = Math.round(editorFontSize * 0.86);
+    nextLayout.fontScale = editorFontSize / POSTER_VERTICAL_BASE_FONT_SIZE;
+    nextLayout.width = Math.max(
+      editorFontSize,
+      editorFontSize + Math.max(0, columnCount - 1) * columnGap
+    );
     // The browser's vertical textarea reserves the full character advance for
     // every glyph (including the last one). Using visible glyph bounds here
     // makes the last character wrap into a new column in the editor.
     nextLayout.height = Math.max(verticalCharAdvance, maxChars * verticalCharAdvance)
-      + Math.max(4, metrics.fontSize * 0.12);
+      + Math.max(4, editorFontSize * 0.12);
   } else {
+    nextLayout.fontScale = metrics.fontSize / baseFontSize;
     const context = createMeasureContext();
     if (context) {
       context.font = isEnglishPoem(poem.content)
