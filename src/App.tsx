@@ -23,6 +23,7 @@ import {
   generateShareImage,
   getPosterTextPreviewMetrics,
   getRemainingShareImageGenerations,
+  isEnglishPoem,
   isShareImageGenerationLimitBypassed,
   regenerateShareImageWithLayout,
   sharePoster,
@@ -2353,10 +2354,19 @@ function App() {
   const handleStartPosterTextEdit = () => {
     if (!selectedFavorite?.shareBackgroundImage || !isPosterTextLayout(selectedFavorite.shareLayout)) return;
 
-    setDraftPosterLayout(formatPosterTextLayoutForEditing(selectedFavorite, {
+    const storedLayout = {
       ...selectedFavorite.shareLayout,
       fontScale: selectedFavorite.shareLayout.fontScale ?? 1,
-    }));
+    };
+    const editableLayout = isEnglishPoem(selectedFavorite.content) && storedLayout.kind.includes('vertical')
+      ? createPosterLayoutForKind(
+          selectedFavorite,
+          storedLayout,
+          'bottom-left',
+          POSTER_EDITOR_LAYOUT_SIZES['bottom-left']
+        )
+      : storedLayout;
+    setDraftPosterLayout(formatPosterTextLayoutForEditing(selectedFavorite, editableLayout));
     setDraftPosterBranding(getFavoritePosterBranding(selectedFavorite));
     setIsPosterTextEditingContent(false);
     setIsPosterTextEditorOpen(true);
@@ -2480,6 +2490,7 @@ function App() {
 
   const handleTogglePosterTextDirection = () => {
     if (!draftPosterLayout || !selectedFavorite) return;
+    if (isEnglishPoem(selectedFavorite.content)) return;
 
     const isVertical = draftPosterLayout.kind.includes('vertical');
     const nextKind: PosterLayoutKind = isVertical
@@ -3618,17 +3629,19 @@ function App() {
                           <PosterEditorIcon name={draftPosterLayout.kind === 'upper-left-vertical' ? 'arrow-right' : 'arrow-left'} />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className="poster-editor-button poster-editor-icon-button"
-                        onClick={handleTogglePosterTextDirection}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        disabled={isGeneratingShareImage || !draftPosterLayout}
-                        aria-label={draftPosterLayout.kind.includes('vertical') ? '切换为横排' : '切换为竖排'}
-                        title={draftPosterLayout.kind.includes('vertical') ? '切换为横排' : '切换为竖排'}
-                      >
-                        <PosterEditorIcon name={draftPosterLayout.kind.includes('vertical') ? 'layout-horizontal' : 'layout-vertical'} />
-                      </button>
+                      {!isEnglishPoem(selectedFavorite.content) && (
+                        <button
+                          type="button"
+                          className="poster-editor-button poster-editor-icon-button"
+                          onClick={handleTogglePosterTextDirection}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          disabled={isGeneratingShareImage || !draftPosterLayout}
+                          aria-label={draftPosterLayout.kind.includes('vertical') ? '切换为横排' : '切换为竖排'}
+                          title={draftPosterLayout.kind.includes('vertical') ? '切换为横排' : '切换为竖排'}
+                        >
+                          <PosterEditorIcon name={draftPosterLayout.kind.includes('vertical') ? 'layout-horizontal' : 'layout-vertical'} />
+                        </button>
+                      )}
                     </div>
                     {posterTextPreviewMetrics && (
                       <div

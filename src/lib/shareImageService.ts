@@ -538,7 +538,7 @@ function drawPosterFooter(
   context.restore();
 }
 
-function isEnglishPoem(text: string): boolean {
+export function isEnglishPoem(text: string): boolean {
   const latinChars = text.match(/[A-Za-z]/g)?.length || 0;
   const cjkChars = text.match(/[\u3400-\u9fff]/g)?.length || 0;
   return latinChars > 0 && latinChars >= cjkChars * 2;
@@ -740,10 +740,7 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
     const verticalCharAdvance = Math.round(editorFontSize * 1.22);
     const columnGap = Math.round(editorFontSize * 0.86);
     nextLayout.fontScale = editorFontSize / POSTER_VERTICAL_BASE_FONT_SIZE;
-    nextLayout.width = Math.max(
-      editorFontSize,
-      editorFontSize + Math.max(0, columnCount - 1) * columnGap
-    );
+    nextLayout.width = Math.max(editorFontSize, columnCount * columnGap);
     // The browser's vertical textarea reserves the full character advance for
     // every glyph (including the last one). Using visible glyph bounds here
     // makes the last character wrap into a new column in the editor.
@@ -767,7 +764,8 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
       + Math.max(4, metrics.fontSize * 0.12);
   }
 
-  nextLayout.width = Math.min(POSTER_WIDTH, Math.max(80, Math.ceil(nextLayout.width)));
+  const minimumEditorWidth = formattedLayout.kind.includes('vertical') ? 36 : 80;
+  nextLayout.width = Math.min(POSTER_WIDTH, Math.max(minimumEditorWidth, Math.ceil(nextLayout.width)));
   nextLayout.height = Math.min(POSTER_HEIGHT, Math.max(80, Math.ceil(nextLayout.height)));
   if (formattedLayout.kind === 'bottom-right-small' || formattedLayout.kind === 'right-vertical') {
     nextLayout.x = originalRight - nextLayout.width;
