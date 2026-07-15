@@ -18,6 +18,13 @@ type CloudflareImageJsonResponse = {
 const DEFAULT_CLOUDFLARE_IMAGE_MODEL = '@cf/black-forest-labs/flux-1-schnell';
 const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
 const DEEPSEEK_BRIEF_TIMEOUT_MS = 9000;
+const TEXT_FREE_IMAGE_RULES = [
+  'ABSOLUTE REQUIREMENT: the final image must contain zero visible text or text-like marks anywhere.',
+  'Do not render any Chinese characters, Latin letters, numbers, punctuation, words, captions, titles, labels, handwriting, calligraphy, typography, signatures, seals, stamps, watermarks, logos, or pseudo-text.',
+  'Do not include text-bearing objects or surfaces such as scrolls, books, letters, documents, signs, plaques, banners, posters, screens, packaging, or engraved inscriptions.',
+  'Any poem line, title, or author supplied below is semantic reference only. Never copy, quote, imitate, transliterate, or visually represent it.',
+  'Reserve all lettering for a separate overlay added later by the application; generate only a clean text-free background.',
+].join(' ');
 
 type ChatCompletionResponse = {
   choices?: Array<{
@@ -92,7 +99,7 @@ function parseVisualBrief(text: string): string {
 function buildVisualBriefPrompt(content: string, poemTitle: string, author: string): string {
   return [
     'Create an English visual brief for an AI image generator.',
-    'The image will become a share poster background for a poem, but the generator must not draw any text.',
+    TEXT_FREE_IMAGE_RULES,
     'Before writing the brief, internally interpret the poem line in plain language.',
     'Then internally consider what role this line may play in the whole poem, using the title and author when helpful.',
     'If you know the poem, use that whole-poem context. If uncertain, infer cautiously from the line, title, and author without inventing factual plot details.',
@@ -100,7 +107,7 @@ function buildVisualBriefPrompt(content: string, poemTitle: string, author: stri
     'Prefer concrete relationships, gestures, objects, interiors, materials, light, cultural details, and spatial tensions that arise from the poem.',
     'Include layered visual specifics from the poem when possible; do not reduce the poem to a generic empty landscape symbol.',
     'Keep one calm area suitable for later poem overlay, but do not make emptiness the main concept.',
-    'Do not include quoted poem text, title text, author text, typography, calligraphy, symbols, watermark, or logo.',
+    'The visual brief itself must not request writing, inscriptions, calligraphy, seals, signs, books, scrolls, documents, or any other text-bearing element.',
     'Do not output your interpretation. Output only the JSON object.',
     'Return JSON only: {"visual_brief":""}',
     '',
@@ -179,25 +186,28 @@ async function buildVisualBrief(content: string, poemTitle: string, author: stri
 
 function buildImagePromptFromBrief(visualBrief: string): string {
   return [
+    TEXT_FREE_IMAGE_RULES,
     visualBrief,
     'Create an image from this brief as a poetic poster background.',
     'Include layered concrete details, tactile materials, and spatial relationships from the brief.',
     'Elegant cinematic composition, natural depth, refined color, emotionally faithful to the brief.',
     'Keep one calm area suitable for later poem overlay, without making emptiness the main concept.',
-    'No text, no letters, no words, no captions, no calligraphy, no typography, no watermark, no logo, no signature.',
+    'Final compliance check: remove every readable or unreadable text-like mark. The output must be a purely visual background with zero lettering.',
   ].join('\n');
 }
 
 function buildFallbackImagePrompt(content: string, poemTitle: string, author: string): string {
   return [
+    TEXT_FREE_IMAGE_RULES,
     'Create a beautiful poetic background image for a share poster.',
     'Use the poem as inspiration for concrete relationships, gestures, objects, interiors, materials, light, cultural details, and spatial tension.',
     'Do not reduce the poem to a generic mood landscape; include layered visual specifics suggested by the line, title, and author.',
     'Keep one calm area suitable for later poem overlay, without making emptiness the main concept.',
-    'No text, no letters, no words, no captions, no calligraphy, no typography, no watermark, no logo, no signature.',
+    'The following source metadata is provided only to infer scene, mood, objects, light, and spatial relationships. It must never appear visibly in the image.',
     `Poem line: ${content}`,
     `Title: ${poemTitle}`,
     `Author: ${author}`,
+    'Final compliance check: do not draw, imitate, or suggest any of the source characters. The image must contain zero text and zero pseudo-text.',
   ].join('\n');
 }
 

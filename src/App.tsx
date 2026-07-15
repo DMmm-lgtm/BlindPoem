@@ -378,7 +378,7 @@ const POSTER_EDITOR_LAYOUT_SIZES: Record<PosterLayoutKind, Pick<PosterTextLayout
   'bottom-left': { width: 690, height: 310 },
   'bottom-right-small': { width: 560, height: 270 },
   'upper-left-vertical': { width: 430, height: 850 },
-  'right-vertical': { width: 430, height: 830 },
+  'right-vertical': { width: 430, height: 850 },
 };
 
 const POSTER_RESIZE_HANDLES: PosterResizeHandle[] = [
@@ -3573,39 +3573,86 @@ function App() {
                       }}
                       onDoubleClick={handleEnablePosterTextContentEdit}
                     >
-                      <textarea
-                        ref={posterEditorTextRef}
-                        className={`poster-text-editor poster-text-editor-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} ${isPosterTextEditingContent ? 'poster-text-editor-editing' : ''}`}
-                        value={draftPosterLayout.text}
-                        onChange={(event) => handleDraftLayoutTextChange(event.target.value)}
-                        onBlur={() => setIsPosterTextEditingContent(false)}
-                        onPointerDown={(event) => {
-                          if (isPosterTextEditingContent) event.stopPropagation();
-                        }}
-                        spellCheck={false}
-                        wrap="off"
-                        readOnly={!isPosterTextEditingContent}
-                        style={{
-                          fontSize: posterTextPreviewMetrics && posterEditorScale
-                            ? `${posterTextPreviewMetrics.fontSize * posterEditorScale}px`
-                            : undefined,
-                          lineHeight: posterTextPreviewMetrics && posterEditorScale
-                            ? `${posterTextPreviewMetrics.lineHeight * posterEditorScale}px`
-                            : undefined,
-                          letterSpacing: draftPosterLayout.kind.includes('vertical')
-                            && posterTextPreviewMetrics?.verticalCharAdvance
-                            && posterEditorScale
-                            ? `${Math.max(
-                                0,
-                                posterTextPreviewMetrics.verticalCharAdvance - posterTextPreviewMetrics.fontSize
-                              ) * posterEditorScale}px`
-                            : undefined,
-                          textAlign: draftPosterLayout.kind.includes('vertical')
-                            ? 'start'
-                            : posterTextPreviewMetrics?.textAlign,
-                        }}
-                        aria-label="调整诗句断句"
-                      />
+                      {draftPosterLayout.kind.includes('vertical')
+                        && !isPosterTextEditingContent
+                        && posterTextPreviewMetrics
+                        && posterEditorScale ? (
+                          <div className="poster-vertical-preview" aria-hidden="true">
+                            {draftPosterLayout.text
+                              .split(/\r?\n/)
+                              .map((line) => line.replace(/\s+/g, ''))
+                              .filter(Boolean)
+                              .map((column, columnIndex) => {
+                                const fontSize = posterTextPreviewMetrics.fontSize * posterEditorScale;
+                                const columnGap = posterTextPreviewMetrics.lineHeight * posterEditorScale;
+                                const charAdvance = (posterTextPreviewMetrics.verticalCharAdvance
+                                  ?? posterTextPreviewMetrics.fontSize) * posterEditorScale;
+                                const isLeftToRight = draftPosterLayout.kind === 'upper-left-vertical';
+                                const columnLeft = isLeftToRight
+                                  ? columnIndex * columnGap
+                                  : (draftPosterLayout.width * posterEditorScale)
+                                    - fontSize
+                                    - columnIndex * columnGap;
+
+                                return (
+                                  <span
+                                    key={`${column}-${columnIndex}`}
+                                    className="poster-vertical-preview-column"
+                                    style={{ left: `${columnLeft}px`, width: `${fontSize}px` }}
+                                  >
+                                    {[...column].map((character, characterIndex) => (
+                                      <span
+                                        key={`${character}-${characterIndex}`}
+                                        className="poster-vertical-preview-character"
+                                        style={{
+                                          top: `${characterIndex * charAdvance}px`,
+                                          width: `${fontSize}px`,
+                                          height: `${fontSize}px`,
+                                          fontSize: `${fontSize}px`,
+                                        }}
+                                      >
+                                        {character}
+                                      </span>
+                                    ))}
+                                  </span>
+                                );
+                              })}
+                          </div>
+                        ) : (
+                          <textarea
+                            ref={posterEditorTextRef}
+                            className={`poster-text-editor poster-text-editor-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} ${isPosterTextEditingContent ? 'poster-text-editor-editing' : ''}`}
+                            value={draftPosterLayout.text}
+                            onChange={(event) => handleDraftLayoutTextChange(event.target.value)}
+                            onBlur={() => setIsPosterTextEditingContent(false)}
+                            onPointerDown={(event) => {
+                              if (isPosterTextEditingContent) event.stopPropagation();
+                            }}
+                            spellCheck={false}
+                            wrap="off"
+                            readOnly={!isPosterTextEditingContent}
+                            style={{
+                              fontSize: posterTextPreviewMetrics && posterEditorScale
+                                ? `${posterTextPreviewMetrics.fontSize * posterEditorScale}px`
+                                : undefined,
+                              lineHeight: posterTextPreviewMetrics && posterEditorScale
+                                ? `${posterTextPreviewMetrics.lineHeight * posterEditorScale}px`
+                                : undefined,
+                              letterSpacing: draftPosterLayout.kind.includes('vertical')
+                                && posterTextPreviewMetrics?.verticalCharAdvance
+                                && posterEditorScale
+                                ? `${Math.max(
+                                    0,
+                                    posterTextPreviewMetrics.verticalCharAdvance - posterTextPreviewMetrics.fontSize
+                                  ) * posterEditorScale}px`
+                                : undefined,
+                              textAlign: draftPosterLayout.kind.includes('vertical')
+                                ? 'start'
+                                : posterTextPreviewMetrics?.textAlign,
+                            }}
+                            aria-label="调整诗句断句"
+                          />
+                        )}
                       {POSTER_RESIZE_HANDLES.map((handle) => (
                         <span
                           key={handle}

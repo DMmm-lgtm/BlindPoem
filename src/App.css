@@ -540,6 +540,34 @@
   text-align: start;
 }
 
+.poster-vertical-preview {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  writing-mode: horizontal-tb;
+  pointer-events: none;
+}
+
+.poster-vertical-preview-column,
+.poster-vertical-preview-character {
+  position: absolute;
+  display: block;
+  writing-mode: horizontal-tb;
+}
+
+.poster-vertical-preview-column {
+  top: 0;
+  height: 100%;
+}
+
+.poster-vertical-preview-character {
+  left: 0;
+  font-family: QianTuBiFeng, serif;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .poster-text-box-upper-left-vertical .poster-text-editor,
 .poster-text-meta-upper-left-vertical {
   writing-mode: vertical-lr;

@@ -128,7 +128,7 @@ const POSTER_TEXT_BASE_LAYOUTS: Record<PosterLayoutKind, Pick<PosterTextLayout, 
   'bottom-left': { x: 92, y: 900, width: 690, height: 310 },
   'bottom-right-small': { x: POSTER_WIDTH - 92 - 560, y: 940, width: 560, height: 270 },
   'upper-left-vertical': { x: 92, y: 170, width: 430, height: 850 },
-  'right-vertical': { x: POSTER_WIDTH - 92 - 430, y: 230, width: 430, height: 830 },
+  'right-vertical': { x: POSTER_WIDTH - 92 - 430, y: 170, width: 430, height: 850 },
 };
 
 export const SHARE_POSTER_SIZE = {
@@ -740,7 +740,13 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
     const verticalCharAdvance = Math.round(editorFontSize * 1.22);
     const columnGap = Math.round(editorFontSize * 0.86);
     nextLayout.fontScale = editorFontSize / POSTER_VERTICAL_BASE_FONT_SIZE;
-    nextLayout.width = Math.max(editorFontSize, columnCount * columnGap);
+    // Both reading directions use identical geometry: the first column takes a
+    // full glyph width and each following column advances by columnGap. Only
+    // the physical anchor changes between left-to-right and right-to-left.
+    nextLayout.width = Math.max(
+      editorFontSize,
+      editorFontSize + (columnCount - 1) * columnGap
+    );
     // The browser's vertical textarea reserves the full character advance for
     // every glyph (including the last one). Using visible glyph bounds here
     // makes the last character wrap into a new column in the editor.
@@ -838,7 +844,10 @@ function fitVerticalPoemColumns(
   minSize: number
 ): { fontSize: number; lineHeight: number; columnGap: number; columns: string[] } {
   const columns = sourceLines.map((line) => line.replace(/\s+/g, '')).filter(Boolean);
-  const safeMinSize = Math.min(minSize, POSTER_UNBROKEN_MIN_FONT_SIZE);
+  // Vertical text has the same single 24px lower bound in preview and export.
+  // Do not let a scale-derived minSize reintroduce the legacy 12px fallback:
+  // that makes the glyph metrics diverge from the box redrawn at 24px.
+  const safeMinSize = Math.max(minSize, POSTER_EDITOR_MIN_FONT_SIZE);
 
   for (let fontSize = startSize; fontSize >= safeMinSize; fontSize -= 2) {
     const lineHeight = Math.round(fontSize * 1.22);
@@ -1035,7 +1044,7 @@ function getLayoutScanBounds(kind: PosterLayoutKind, columnSpan: number, rowSpan
     minColumn: Math.max(0, Math.min(maxColumn, 4)),
     maxColumn,
     minRow: 0,
-    maxRow: Math.min(maxRow, 4),
+    maxRow: Math.min(maxRow, 3),
   };
 }
 
@@ -1496,6 +1505,17 @@ async function composeShareImage(
   layout: PosterTextLayout,
   brandingOptions: PosterBrandingOptions = DEFAULT_BRANDING_OPTIONS
 ): Promise<string> {
+  // Canvas keeps whichever fallback font is active at draw time. Wait for the
+  // poster font so the completed bitmap uses the same face as the DOM preview.
+  if (typeof document !== 'undefined' && 'fonts' in document) {
+    try {
+      await document.fonts.load('52px QianTuBiFeng');
+      await document.fonts.ready;
+    } catch {
+      // Keep image generation available on browsers without a working FontFaceSet.
+    }
+  }
+
   const background = await loadImage(backgroundImage);
   const siteQRCode = brandingOptions.showQRCode ? await loadImage(WEBSITE_QR_CODE_PATH) : null;
   const style = POSTER_STYLES.find((item) => item.name === layout.styleName) || POSTER_STYLES[0];
