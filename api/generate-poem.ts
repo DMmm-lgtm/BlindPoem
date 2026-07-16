@@ -36,14 +36,14 @@ function buildPoemPrompt(
   shouldMatchMood: boolean
 ): string {
   const mode = shouldMatchMood
-    ? `选择贴合以下情绪的诗歌片段：${moodName}`
-    : '不参考任何情绪，随机选择一个诗歌片段';
+    ? `帮我找到贴合以下情绪的真实诗歌片段：${moodName}`
+    : '不参考任何情绪，帮我随机找到一个真实诗歌片段';
   const language = pickRandom(['中文', '英文', '中英皆可']);
   const era = pickRandom(['古典', '现代', '当代', '任意时代']);
 
   return `${mode}
 本次偏好：${language}；${era}。
-请选择作者和篇名明确的真实诗歌片段，不接受佚名、匿名或未知。
+请帮我找到作者和篇名明确的真实诗歌片段，不接受佚名、匿名或未知。
 以能够独立呈现完整意象的最短连续原文为准：单行已经完整时只返回单行；若单行只是铺垫、引出或条件，须连同完成核心意象的相邻后续诗行返回。不得截断或改写。
 
 返回JSON：{"content":"","poem_title":"","author":""}`;
@@ -258,14 +258,14 @@ async function requestOpenRouterModel(fullPrompt: string, model: string): Promis
         messages: [
           {
             role: 'system',
-            content: 'Return JSON only. Select one authentic poetic excerpt with a known title and author. Use the shortest consecutive excerpt that forms a complete image; include adjacent original lines only when necessary. Never truncate or rewrite.',
+            content: 'Return JSON only. Find one authentic poetic excerpt with a known title and author. Use the shortest consecutive excerpt that forms a complete image; include adjacent original lines only when necessary. Never truncate or rewrite.',
           },
           {
             role: 'user',
             content: fullPrompt,
           },
         ],
-        temperature: 0.95,
+        temperature: 0.8,
         top_p: 0.95,
         max_tokens: 256,
       }),
@@ -358,14 +358,14 @@ async function generateWithDeepSeek(fullPrompt: string): Promise<PoemData> {
         messages: [
           {
             role: 'system',
-            content: 'Return valid JSON only. No markdown. No commentary. Select one authentic poetic excerpt with a known title and author. Use the shortest consecutive excerpt that forms a complete image; include adjacent original lines only when necessary. Never truncate or rewrite. The JSON schema is {"content":"","poem_title":"","author":""}.',
+            content: 'Return valid JSON only. No markdown. No commentary. Find one authentic poetic excerpt with a known title and author. Use the shortest consecutive excerpt that forms a complete image; include adjacent original lines only when necessary. Never truncate or rewrite. The JSON schema is {"content":"","poem_title":"","author":""}.',
           },
           {
             role: 'user',
             content: fullPrompt,
           },
         ],
-        temperature: 0.9,
+        temperature: 0.8,
         top_p: 0.95,
         max_tokens: 256,
         response_format: { type: 'json_object' },
