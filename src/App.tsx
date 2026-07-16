@@ -43,6 +43,14 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
+function getPoemSearchUrl(title: string, author: string, content: string): string {
+  const query = isEnglishPoem(content)
+    ? `"${title}" "${author}" full poem`
+    : `《${title}》 ${author} 全诗`;
+
+  return `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
+}
+
 // 100 个精选情绪 Emoji 配置池（完整池）
 const EMOJI_MOODS = [
   // 正面情绪（35个）
@@ -3969,7 +3977,18 @@ function App() {
             
             {/* 诗名和作者 - 右对齐 */}
             <div className="text-sm text-gold/80 text-right">
-              <p>《{poemData.poem_title}》</p>
+              <p>
+                <a
+                  className="poem-title-search"
+                  href={getPoemSearchUrl(poemData.poem_title, poemData.author, poemData.content)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`搜索《${poemData.poem_title}》全文`}
+                  title="搜索并阅读整首诗"
+                >
+                  《{poemData.poem_title}》
+                </a>
+              </p>
               <p>— {poemData.author}</p>
             </div>
             

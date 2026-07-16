@@ -61,6 +61,28 @@
   text-wrap: pretty;
 }
 
+.poem-title-search {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  cursor: pointer;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+.poem-title-search:hover,
+.poem-title-search:focus-visible {
+  color: rgba(255, 239, 195, 1);
+  text-decoration-color: rgba(255, 232, 173, 0.68);
+}
+
+.poem-title-search:focus-visible {
+  outline: 1px solid rgba(255, 232, 173, 0.58);
+  outline-offset: 0.2rem;
+  border-radius: 0.16rem;
+}
+
 .favorites-trigger {
   position: fixed;
   display: inline-flex;
