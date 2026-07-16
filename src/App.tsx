@@ -43,10 +43,8 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-function getPoemSearchUrl(title: string, author: string, content: string): string {
-  const query = isEnglishPoem(content)
-    ? `"${title}" "${author}" full poem`
-    : `《${title}》 ${author} 全诗`;
+function getPoemSearchUrl(content: string): string {
+  const query = `"${content.replace(/\s+/g, ' ').trim()}"`;
 
   return `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
 }
@@ -2882,24 +2880,6 @@ function App() {
     return nearestDistance <= emojiSize * 0.9 ? nearestIndex : -1;
   }, [emojiSize]);
 
-  // 处理关闭按钮点击
-  const handleCloseClick = () => {
-    if (!isPoemFadingOut) {
-      setIsPoemFadingOut(true);
-      console.log('✅ 关闭按钮：诗句框开始淡出');
-      
-      triggerMeteor();
-      console.log('🌠 关闭诗句时触发流星');
-      
-      // 0.8秒淡出动画完成后，真正关闭诗句框
-      setTimeout(() => {
-        setPoemData(null);
-        setIsPoemFadingOut(false);
-        console.log('✅ 诗句框已关闭');
-      }, 800);
-    }
-  };
-
   // 处理点击诗句框外部区域
   const handleOutsideClick = () => {
     if (showQRCode && !isQRFadingOut) {
@@ -3968,39 +3948,24 @@ function App() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* 诗句内容 - 左对齐，一句一行 */}
-            <div className="poem-display-lines text-2xl text-white mb-4 leading-relaxed text-left">
-              {getPoemDisplayLines(poemData.content).map((line, index) => (
-                <p key={index}>{line}</p>
-              ))}
-            </div>
-            
-            {/* 诗名和作者 - 右对齐 */}
-            <div className="text-sm text-gold/80 text-right">
-              <p>
-                <a
-                  className="poem-title-search"
-                  href={getPoemSearchUrl(poemData.poem_title, poemData.author, poemData.content)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`搜索《${poemData.poem_title}》全文`}
-                  title="搜索并阅读整首诗"
-                >
-                  《{poemData.poem_title}》
-                </a>
-              </p>
-              <p>— {poemData.author}</p>
-            </div>
+            {/* 诗句内容 - 左对齐，一句一行；点击后搜索原文 */}
+            <a
+              className="poem-content-search"
+              href={getPoemSearchUrl(poemData.content)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="搜索这句诗"
+              title="搜索这句诗"
+            >
+              <div className="poem-display-lines text-2xl text-white mb-4 leading-relaxed text-left">
+                {getPoemDisplayLines(poemData.content).map((line, index) => (
+                  <p key={index}>{line}</p>
+                ))}
+              </div>
+            </a>
             
             {/* 按钮区域 */}
-            <div className="mt-4 flex items-center justify-between">
-              <button
-                onClick={handleCloseClick}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all"
-              >
-                关闭
-              </button>
-              
+            <div className="mt-4 flex items-center justify-end">
               {/* 爱心按钮区域 - 固定占位，避免提示出现时撑大诗句框 */}
               <div
                 className="flex items-center justify-end gap-1.5"
