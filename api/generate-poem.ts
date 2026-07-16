@@ -33,27 +33,20 @@ function pickRandom<T>(items: T[]): T {
 
 function buildPoemPrompt(
   moodName: string,
-  shouldMatchMood: boolean,
-  excludedContents: string[]
+  shouldMatchMood: boolean
 ): string {
   const mode = shouldMatchMood
     ? `选择贴合以下情绪的诗句：${moodName}`
-    : '不参考任何情绪，随机选择一首好诗中的一句';
+    : '不参考任何情绪，随机选择一句诗';
   const language = pickRandom(['中文', '英文', '中英皆可']);
   const era = pickRandom(['古典', '现代', '当代', '任意时代']);
-  const style = pickRandom(['清冷', '明亮', '荒诞', '温柔', '锋利', '孤独', '轻盈', '辽阔']);
-  const fame = pickRandom(['避开最常见名句', '可选名句但不要俗套', '优先冷门一点']);
-
-  const exclusion = excludedContents.length > 0
-    ? `\n不要返回以下最近已经出现过的诗句（包括标点或换行略有不同的版本）：\n${excludedContents.map((content) => `- ${content}`).join('\n')}`
-    : '';
 
   return `${mode}
-本次偏好：${language}；${era}；${style}；${fame}。
-真实诗句。必须有明确作者和篇名，不能佚名/匿名/未知。中文英文都可以；英文必须是一句完整短诗句。
-不要返回被截断的半句；英文不能以连字符、破折号、省略号或未闭合标点结尾。
-诗句内容尽量不超过80个字符。
-返回JSON：{"content":"","poem_title":"","author":""}${exclusion}`;
+本次偏好：${language}；${era}。
+请选择作者和篇名明确的真实诗句，不接受佚名、匿名或未知。
+诗句须语义和意象完整，不截断、不改写。
+
+返回JSON：{"content":"","poem_title":"","author":""}`;
 }
 
 function validatePoemData(poemData: PoemData): PoemData {
@@ -424,23 +417,16 @@ export default async function handler(
   }
 
   try {
-    const { keyword, moodName, excludedContents: rawExcludedContents } = req.body;
+    const { keyword, moodName } = req.body;
 
     if (!keyword || !moodName) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
 
-    const excludedContents = Array.isArray(rawExcludedContents)
-      ? rawExcludedContents
-          .filter((content): content is string => typeof content === 'string')
-          .map((content) => content.trim())
-          .filter(Boolean)
-          .slice(0, 20)
-      : [];
     const shouldMatchMood = Math.random() < 0.5;
     console.log(`🎯 生成诗句 - 关键词: ${keyword}, 心情: ${moodName}, 模式: ${shouldMatchMood ? '情绪相关' : '情绪无关'}`);
 
-    const fullPrompt = buildPoemPrompt(moodName, shouldMatchMood, excludedContents);
+    const fullPrompt = buildPoemPrompt(moodName, shouldMatchMood);
 
     const hasOpenRouter = Boolean(process.env.OPENROUTER_API_KEY);
     const hasDeepSeek = Boolean(process.env.DEEPSEEK_API_KEY);

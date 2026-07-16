@@ -3054,7 +3054,7 @@ function App() {
 
       // AI 返回最近 N 条中的重复内容时，再搜索一次；两次都不可用才进入数据库回退。
       for (let attempt = 1; attempt <= 2; attempt += 1) {
-        const candidate = await generatePoem(keyword, mood, recentPoems);
+        const candidate = await generatePoem(keyword, mood);
         const normalizedCandidate = normalizedForComparison(formatPoemForDisplay(candidate.content));
         const isRecentDuplicate = recentPoems.some(
           (content) => normalizedForComparison(content) === normalizedCandidate
