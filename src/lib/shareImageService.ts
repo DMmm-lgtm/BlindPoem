@@ -921,7 +921,7 @@ function drawEnglishPosterText(
   const metaLineHeight = Math.round(metaFontSize * 1.32);
   context.font = `${metaFontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
   context.textAlign = 'right';
-  const metaText = `《${poem.poem_title}》 — ${poem.author}`;
+  const metaText = `《${poem.poem_title}》`;
   const metaLines = wrapEnglishText(context, metaText, layout.width);
   const metaY = clamp(
     layout.y + layout.height + metaLineHeight * 0.35,
@@ -1293,7 +1293,7 @@ function drawPosterText(
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
     drawVerticalColumns(
       context,
-      [`${formatVerticalBookTitle(poem.poem_title)}${poem.author}`],
+      [formatVerticalBookTitle(poem.poem_title)],
       metaStartX,
       layout.y,
       metaLineHeight,
@@ -1329,7 +1329,7 @@ function drawPosterText(
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
     drawVerticalColumns(
       context,
-      [`${formatVerticalBookTitle(poem.poem_title)}${poem.author}`],
+      [formatVerticalBookTitle(poem.poem_title)],
       metaStartX,
       layout.y,
       metaLineHeight,
@@ -1368,7 +1368,7 @@ function drawPosterText(
       POSTER_HEIGHT - 28
     );
     context.textAlign = 'right';
-    context.fillText(`《${poem.poem_title}》 · ${poem.author}`, layout.x + layout.width, metaY, layout.width);
+    context.fillText(`《${poem.poem_title}》`, layout.x + layout.width, metaY, layout.width);
   }
 
   context.restore();
@@ -1458,7 +1458,7 @@ function getPosterLayoutContentBounds(poem: FavoritePoem, layout: PosterTextLayo
     };
   }
 
-  const metaHeight = [...`${formatVerticalBookTitle(poem.poem_title)}${poem.author}`].length
+  const metaHeight = [...formatVerticalBookTitle(poem.poem_title)].length
     * metrics.metaLineHeight;
   const metaWidth = metrics.metaFontSize;
   const metaLeft = layout.kind === 'upper-left-vertical'

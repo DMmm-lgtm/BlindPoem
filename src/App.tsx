@@ -495,7 +495,7 @@ function getPosterMetaBounds(
     };
   }
 
-  const metaHeight = [...`${formatVerticalBookTitle(poem.poem_title)}${poem.author}`].length
+  const metaHeight = [...formatVerticalBookTitle(poem.poem_title)].length
     * metrics.metaLineHeight;
   const metaWidth = metrics.metaFontSize;
   const isLeftToRight = layout.kind === 'upper-left-vertical';
@@ -3693,9 +3693,9 @@ function App() {
                         }}
                       >
                         {draftPosterLayout.kind.includes('vertical') ? (
-                          <span>{formatVerticalBookTitle(selectedFavorite.poem_title)}{selectedFavorite.author}</span>
+                          <span>{formatVerticalBookTitle(selectedFavorite.poem_title)}</span>
                         ) : (
-                          <>《{selectedFavorite.poem_title}》 · {selectedFavorite.author}</>
+                          <>《{selectedFavorite.poem_title}》</>
                         )}
                       </div>
                     )}
@@ -3966,18 +3966,19 @@ function App() {
             <div className="mt-4 flex items-center justify-start">
               {/* 爱心按钮区域 - 固定占位，避免提示出现时撑大诗句框 */}
               <div
-                className="flex items-center justify-start gap-1.5"
+                className="relative"
                 style={{
-                  minWidth: isSmallMobile ? '8.75rem' : '10.75rem',
-                  minHeight: isSmallMobile ? '2.25rem' : '2.75rem',
+                  width: isSmallMobile ? '8.75rem' : '10.75rem',
+                  height: isSmallMobile ? '2.25rem' : '2.75rem',
+                  flex: '0 0 auto',
                 }}
               >
                 {showLoveButton && (
-                  <>
+                  <div className="absolute inset-0 flex items-center justify-start gap-1.5">
                   {/* 爱心按钮 */}
                   <button
                     onClick={handleLoveClick}
-                    className="text-3xl transition-all duration-300 hover:scale-110"
+                    className="love-button text-3xl transition-all duration-300 hover:scale-110"
                     style={{
                       transform: isLoved ? 'scale(1.2)' : 'scale(1)',
                       filter: isLoved ? 'drop-shadow(0 0 8px rgba(255, 50, 50, 0.8))' : 'none',
@@ -4013,7 +4014,7 @@ function App() {
                   >
                     喜欢就收藏吧！
                   </span>
-                  </>
+                  </div>
                 )}
               </div>
             </div>

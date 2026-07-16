@@ -61,6 +61,11 @@
   text-wrap: pretty;
 }
 
+.poem-display .love-button {
+  flex: 0 0 auto;
+  padding: 0 !important;
+}
+
 .poem-content-search {
   display: block;
   color: inherit;
