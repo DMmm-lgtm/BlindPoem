@@ -58,8 +58,8 @@ function prepareFavoritesForStorage(favorites: FavoritePoem[]): FavoritePoem[] {
   }));
 }
 
-export function getFavoriteId(content: string, poemTitle: string, author: string): string {
-  return `${normalizeFavoriteContent(content)}|${poemTitle.trim()}|${author.trim()}`;
+export function getFavoriteId(content: string): string {
+  return normalizeFavoriteContent(content);
 }
 
 function parseFavorites(raw: string | null): FavoritePoem[] {
@@ -67,15 +67,19 @@ function parseFavorites(raw: string | null): FavoritePoem[] {
 
   try {
     const favorites = JSON.parse(raw) as FavoritePoem[];
-    return Array.isArray(favorites)
-      ? favorites
-          .filter((favorite) => favorite?.id && favorite.content)
-          .map((favorite) => ({
-            ...favorite,
-            id: getFavoriteId(favorite.content, favorite.poem_title || '', favorite.author || ''),
-            content: normalizeFavoriteContent(favorite.content),
-          }))
-      : [];
+    if (!Array.isArray(favorites)) return [];
+
+    const normalizedFavorites = favorites
+      .filter((favorite) => favorite?.id && favorite.content)
+      .map((favorite) => ({
+        ...favorite,
+        id: getFavoriteId(favorite.content),
+        content: normalizeFavoriteContent(favorite.content),
+      }));
+
+    return normalizedFavorites.filter(
+      (favorite, index, items) => items.findIndex((item) => item.id === favorite.id) === index
+    );
   } catch (error) {
     console.warn('⚠️ 读取收藏夹失败：', error);
     return [];
@@ -139,12 +143,9 @@ export function addFavorite(poem: {
   poem_title: string;
   author: string;
 }): FavoritePoem[] {
-  const id = getFavoriteId(poem.content, poem.poem_title, poem.author);
+  const id = getFavoriteId(poem.content);
   const existingFavorites = readFavorites();
-  const existingFavorite = existingFavorites.find((favorite) => (
-    favorite.id === id ||
-    getFavoriteId(favorite.content, favorite.poem_title, favorite.author) === id
-  ));
+  const existingFavorite = existingFavorites.find((favorite) => favorite.id === id);
   const nextFavorite: FavoritePoem = {
     ...existingFavorite,
     id,

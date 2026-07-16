@@ -830,7 +830,7 @@ function App() {
 
   const currentFavoriteId = useMemo(() => (
     poemData
-      ? getFavoriteId(poemData.content, poemData.poem_title, poemData.author)
+      ? getFavoriteId(poemData.content)
       : null
   ), [poemData]);
 
@@ -3434,7 +3434,6 @@ function App() {
                     }}
                   >
                     <span>{favorite.content}</span>
-                    <small>《{favorite.poem_title}》 · {favorite.author}</small>
                   </button>
                 ))}
               </div>
@@ -3470,7 +3469,6 @@ function App() {
                       <p key={`${line}-${index}`}>{line}</p>
                     ))}
                   </div>
-                  <span>《{selectedFavorite.poem_title}》 · {selectedFavorite.author}</span>
                 </div>
 
                 {isPosterTextEditorOpen && draftPosterLayout && selectedFavorite.shareBackgroundImage ? (
@@ -3965,10 +3963,10 @@ function App() {
             </a>
             
             {/* 按钮区域 */}
-            <div className="mt-4 flex items-center justify-end">
+            <div className="mt-4 flex items-center justify-start">
               {/* 爱心按钮区域 - 固定占位，避免提示出现时撑大诗句框 */}
               <div
-                className="flex items-center justify-end gap-1.5"
+                className="flex items-center justify-start gap-1.5"
                 style={{
                   minWidth: isSmallMobile ? '8.75rem' : '10.75rem',
                   minHeight: isSmallMobile ? '2.25rem' : '2.75rem',
@@ -3976,26 +3974,6 @@ function App() {
               >
                 {showLoveButton && (
                   <>
-                  {/* 提示文字 - 高光划过效果 */}
-                  <span
-                    className="love-hint-text"
-                    style={{
-                      fontSize: '0.875rem',
-                      color: 'rgba(255, 215, 0, 0.8)',
-                      fontFamily: 'QianTuBiFeng, sans-serif',
-                      whiteSpace: 'nowrap',
-                      animation: isLoved
-                        ? 'none'
-                        : 'loveHintFadeIn 0.8s ease-out 1.5s forwards, loveHintShine 2.5s linear 2.5s infinite',
-                      opacity: isLoved ? 0 : 0,
-                      visibility: isLoved ? 'hidden' : 'visible',
-                      position: 'relative',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    喜欢就收藏吧！
-                  </span>
-                  
                   {/* 爱心按钮 */}
                   <button
                     onClick={handleLoveClick}
@@ -4015,6 +3993,26 @@ function App() {
                   >
                     {isLoved ? '❤️' : '🤍'}
                   </button>
+
+                  {/* 提示文字 - 高光划过效果 */}
+                  <span
+                    className="love-hint-text"
+                    style={{
+                      fontSize: '0.875rem',
+                      color: 'rgba(255, 215, 0, 0.8)',
+                      fontFamily: 'QianTuBiFeng, sans-serif',
+                      whiteSpace: 'nowrap',
+                      animation: isLoved
+                        ? 'none'
+                        : 'loveHintFadeIn 0.8s ease-out 1.5s forwards, loveHintShine 2.5s linear 2.5s infinite',
+                      opacity: isLoved ? 0 : 0,
+                      visibility: isLoved ? 'hidden' : 'visible',
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    喜欢就收藏吧！
+                  </span>
                   </>
                 )}
               </div>
