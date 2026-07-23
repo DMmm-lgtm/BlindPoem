@@ -4006,7 +4006,7 @@ function App() {
             )}
             
             {/* 按钮区域 */}
-            <div className="mt-4 flex items-center justify-start">
+            <div className="mt-4 flex items-center justify-end">
               {/* 爱心按钮区域 - 固定占位，避免提示出现时撑大诗句框 */}
               <div
                 className="relative"
@@ -4017,7 +4017,7 @@ function App() {
                 }}
               >
                 {showLoveButton && (
-                  <div className="absolute inset-0 flex items-center justify-start gap-1.5">
+                  <div className="absolute inset-0 flex flex-row-reverse items-center justify-start gap-1.5">
                   {/* 爱心按钮 */}
                   <button
                     onClick={handleLoveClick}

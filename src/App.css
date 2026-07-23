@@ -80,9 +80,11 @@
 }
 
 .poem-attribution {
-  display: inline-block;
+  display: block;
+  width: 100%;
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.9rem;
+  text-align: right;
   text-decoration: none;
   transition: color 160ms ease;
 }
