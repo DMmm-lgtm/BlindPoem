@@ -79,8 +79,10 @@ function extractRelevantSnippet(rawContent: string, poemContent: string, fallbac
 
   const normalizedIndex = normalizedRaw.indexOf(fragment);
   const originalIndex = originalPositions[normalizedIndex] ?? 0;
-  const start = Math.max(0, originalIndex - 180);
-  return rawContent.slice(start, start + MAX_SNIPPET_LENGTH).trim();
+  const start = Math.max(0, originalIndex - 100);
+  const summary = fallback.trim().slice(0, 200);
+  const rawExcerpt = rawContent.slice(start, start + 300).trim();
+  return [summary, rawExcerpt].filter(Boolean).join('\n').slice(0, MAX_SNIPPET_LENGTH);
 }
 
 function containsPoem(result: SearchResult, content: string): boolean {
