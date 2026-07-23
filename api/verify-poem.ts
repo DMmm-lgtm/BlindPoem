@@ -13,7 +13,7 @@ type Attribution = {
   author: string;
   poem_title: string;
   source_url: string;
-  method: 'rules' | 'ai_fallback' | 'database';
+  method: 'ai_evidence' | 'database';
 };
 
 type VerificationStatus = 'pending' | 'verified' | 'not_found' | 'retryable_error';
@@ -33,7 +33,7 @@ const MAX_SNIPPET_LENGTH = 500;
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_FOUND_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RETRYABLE_ERROR_COOLDOWN_MS = 60 * 60 * 1000;
-const VERIFICATION_VERSION = 'full_excerpt_v1';
+const VERIFICATION_VERSION = 'ai_evidence_v1';
 const attributionCache = new Map<string, { attribution: Attribution | null; expiresAt: number }>();
 const rateWindows = new Map<string, { count: number; resetAt: number }>();
 
@@ -279,61 +279,55 @@ function isPlausibleAuthor(author: string): boolean {
   return author.length <= 40;
 }
 
-function getSourceDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
+function isPlausibleTitle(title: string): boolean {
+  const invalid = /^(?:字词|译文|注释|赏析|原文|作者|诗人|词人|作品|古诗|诗词|未知)$/i;
+  return Boolean(title) && !invalid.test(title) && title.length <= 80;
 }
 
-function extractWithRules(sources: SearchResult[]): Attribution | null {
-  const titlePatterns = [
-    /《([^《》]{1,60})》/,
-    /(?:出自|作品|篇名)[：:\s]*[《“"]?([^《》“”"，。；;]{2,60})[》”"]?/,
-  ];
-  const authorPatterns = [
-    /作者[：:\s]+([\p{L}·.-]{2,40})/u,
-    /(?:唐代|宋代|元代|明代|清代|近代|现代|当代)?(?:诗人|词人|作家)[：:\s]*([\p{L}·.-]{2,40}?)(?:创作|所作|写作|的作品|的诗)/u,
-    /(?:^|[|｜_—-])([\p{Script=Han}]{2,4})《/u,
-    /》([\p{Script=Han}]{2,4})(?:$|[|｜_—-])/u,
-  ];
-
-  const candidates = sources.flatMap((source) => {
-    const text = `${source.title}\n${source.content}`;
-    const title = titlePatterns.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
-    const author = authorPatterns.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
-    const cleanedTitle = title ? cleanCandidate(title) : '';
-    const cleanedAuthor = author ? cleanCandidate(author) : '';
-    return cleanedTitle && isPlausibleAuthor(cleanedAuthor)
-      ? [{ author: cleanedAuthor, poem_title: cleanedTitle, source }]
-      : [];
-  });
-
-  for (const candidate of candidates) {
-    const agreeingCandidates = candidates.filter((other) => (
-      normalize(other.author) === normalize(candidate.author) &&
-      normalize(other.poem_title) === normalize(candidate.poem_title)
-    ));
-    const agreementDomains = new Set(
-      agreeingCandidates.map((other) => getSourceDomain(other.source.url))
-    );
-
-    if (agreementDomains.size >= 2) {
-      return {
-        author: candidate.author,
-        poem_title: candidate.poem_title,
-        source_url: candidate.source.url,
-        method: 'rules',
+function compactEvidenceSources(sources: SearchResult[], poemContent: string): SearchResult[] {
+  const target = normalize(poemContent);
+  return [...sources]
+    .sort((left, right) => {
+      const score = (source: SearchResult) => {
+        const text = `${source.title}\n${source.content}`;
+        return (/[《》]/.test(text) ? 2 : 0)
+          + (/(?:作者|诗人|词人|作家|朝代)[：:\s]/.test(text) ? 2 : 0)
+          + (source.title.length <= 100 ? 1 : 0);
       };
-    }
-  }
-
-  return null;
+      return score(right) - score(left);
+    })
+    .slice(0, 3)
+    .map((source) => {
+      const text = source.content.replace(/\s+/g, ' ').trim();
+      const normalizedChars: string[] = [];
+      const positions: number[] = [];
+      for (let index = 0; index < text.length; index += 1) {
+        const character = normalize(text[index]);
+        if (!character) continue;
+        normalizedChars.push(character);
+        positions.push(index);
+      }
+      const normalizedText = normalizedChars.join('');
+      const matchIndex = normalizedText.indexOf(target);
+      const originalStart = positions[matchIndex] ?? 0;
+      const originalEnd = positions[matchIndex + target.length - 1] ?? originalStart;
+      const start = Math.max(0, originalStart - 80);
+      const end = Math.min(text.length, originalEnd + 121);
+      const localExcerpt = text.slice(start, end);
+      const prefix = text.slice(0, 100);
+      const compactContent = localExcerpt.includes(prefix)
+        ? localExcerpt
+        : `${prefix} … ${localExcerpt}`;
+      return {
+        ...source,
+        title: source.title.slice(0, 100),
+        content: compactContent.slice(0, 280),
+      };
+    });
 }
 
 type DeepSeekExtraction =
-  | { status: 'found'; author: string; poem_title: string; source_id: number; evidence: string }
+  | { status: 'found'; author: string; poem_title: string; source_id: number }
   | { status: 'not_found' }
   | { status: 'retryable_error' };
 
@@ -356,15 +350,15 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
         messages: [
           {
             role: 'system',
-            content: 'You propose a poem attribution candidate from the supplied web-search results. You may use literary knowledge when snippets are incomplete, but the backend will reject any author or title not supported by those results. Return JSON only.',
+            content: '仅从证据卡提取整段诗句的作者和篇名。部分匹配、冲突、不确定或证据未同时支持作者与篇名时返回n。只返回JSON。',
           },
           {
             role: 'user',
-            content: `待核验诗句：${content}\n搜索片段：${JSON.stringify(sources.map(({ id, title, content: snippet }) => ({ id, title, snippet })))}\n请从搜索结果中提取最可能的作者和作品篇名。片段信息不完整时可以用文学知识提出候选，但候选最终必须能被同一批搜索结果支持。必须引用一个确实包含待核验诗句的 source_id 和原文 evidence。无法提出单一候选、只有相似句或结果冲突时返回 not_found。返回：{"status":"found|not_found","author":"","poem_title":"","source_id":0,"evidence":""}`,
+            content: `q=${JSON.stringify(content)}\nr=${JSON.stringify(sources.map(({ id, title, content: excerpt }) => ({ i: id, t: title, e: excerpt })))}\n返回：{"s":"f|n","a":"作者","t":"篇名","i":来源编号}`,
           },
         ],
         temperature: 0,
-        max_tokens: 180,
+        max_tokens: 100,
         response_format: { type: 'json_object' },
         thinking: { type: 'disabled' },
         stream: false,
@@ -377,23 +371,19 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
     const raw = data.choices?.[0]?.message?.content;
     if (!raw) return { status: 'retryable_error' };
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (parsed.status === 'not_found') return { status: 'not_found' };
-    if (parsed.status !== 'found') return { status: 'retryable_error' };
+    if (parsed.s === 'n') return { status: 'not_found' };
+    if (parsed.s !== 'f') return { status: 'retryable_error' };
 
-    const author = cleanCandidate(String(parsed.author || ''));
-    const poemTitle = cleanCandidate(String(parsed.poem_title || ''));
-    const sourceId = Number(parsed.source_id);
-    const evidence = String(parsed.evidence || '').trim();
+    const author = cleanCandidate(String(parsed.a || ''));
+    const poemTitle = cleanCandidate(String(parsed.t || ''));
+    const sourceId = Number(parsed.i);
     const source = sources.find((item) => item.id === sourceId);
 
-    if (!isPlausibleAuthor(author) || !poemTitle || !source || !evidence) {
-      return { status: 'not_found' };
-    }
-    if (!normalize(`${source.title} ${source.content}`).includes(normalize(evidence))) {
+    if (!isPlausibleAuthor(author) || !isPlausibleTitle(poemTitle) || !source) {
       return { status: 'not_found' };
     }
 
-    return { status: 'found', author, poem_title: poemTitle, source_id: sourceId, evidence };
+    return { status: 'found', author, poem_title: poemTitle, source_id: sourceId };
   } catch (error) {
     console.warn('DeepSeek attribution fallback failed:', error);
     return { status: 'retryable_error' };
@@ -418,7 +408,7 @@ function findCandidateEvidence(
       source,
       hasPoem: containsPoem(source, content),
       hasAuthor: text.includes(normalizedAuthor),
-      hasTitle: titleParts.some((part) => text.includes(part)),
+      hasTitle: titleParts.every((part) => text.includes(part)),
     };
   });
   const jointEvidence = evidence.find((item) => item.hasPoem && item.hasAuthor && item.hasTitle);
@@ -442,8 +432,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const storedPoem = await getStoredPoem(cacheKey);
   if (
     storedPoem?.attribution_status === 'verified' &&
-    storedPoem.author?.trim() &&
-    storedPoem.poem_title?.trim()
+    isPlausibleAuthor(storedPoem.author?.trim() || '') &&
+    isPlausibleTitle(storedPoem.poem_title?.trim() || '')
   ) {
     const attribution: Attribution = {
       author: storedPoem.author.trim(),
@@ -488,7 +478,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? `"${searchableExcerpt}" 作者`
       : `"${searchableExcerpt}" author`;
     const searchResults = await tavilySearch(discoveryQuery, content);
-    const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 5);
+    const matchingSources = searchResults.filter((result) => containsPoem(result, content));
     if (matchingSources.length === 0) {
       const reason = searchResults.some((result) => containsPartialPoem(result, content))
         ? 'partial_poem_match'
@@ -498,22 +488,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ attribution: null, verification_status: reason });
     }
 
-    const ruleAttribution = extractWithRules(matchingSources);
-    const aiExtraction = ruleAttribution
-      ? null
-      : await extractWithDeepSeek(content, matchingSources);
-    if (aiExtraction?.status === 'retryable_error') {
+    const evidenceSources = compactEvidenceSources(matchingSources, content);
+    const aiExtraction = await extractWithDeepSeek(content, evidenceSources);
+    if (aiExtraction.status === 'retryable_error') {
       await persistVerification(content, 'retryable_error', 'ai_extraction_error');
       return res.status(200).json({ attribution: null, verification_status: 'verification_error' });
     }
-    const candidate = ruleAttribution ? {
-      author: ruleAttribution.author,
-      poem_title: ruleAttribution.poem_title,
-      method: 'rules' as const,
-    } : aiExtraction?.status === 'found' ? {
+    const candidate = aiExtraction.status === 'found' ? {
       author: aiExtraction.author,
       poem_title: aiExtraction.poem_title,
-      method: 'ai_fallback' as const,
+      source_id: aiExtraction.source_id,
+      method: 'ai_evidence' as const,
     } : null;
     if (!candidate) {
       attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
@@ -521,12 +506,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ attribution: null, verification_status: 'no_attribution_candidate' });
     }
 
-    const evidenceSource = findCandidateEvidence(
-      matchingSources,
+    const claimedSource = evidenceSources.find((source) => source.id === candidate.source_id);
+    const evidenceSource = claimedSource ? findCandidateEvidence(
+      [claimedSource],
       content,
       candidate.author,
       candidate.poem_title
-    );
+    ) : null;
 
     const attribution: Attribution | null = evidenceSource ? {
         author: candidate.author,

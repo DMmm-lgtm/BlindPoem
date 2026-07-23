@@ -6,7 +6,7 @@ export interface PoemAttribution {
   author: string;
   poem_title: string;
   source_url: string;
-  method: 'rules' | 'ai_fallback' | 'database';
+  method: 'ai_evidence' | 'database';
 }
 
 const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v3';
