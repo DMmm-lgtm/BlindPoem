@@ -11,8 +11,14 @@ const supabaseUrl = rawSupabaseUrl
 export interface Poem {
   id?: string;
   content: string;
+  content_key?: string;
   poem_title?: string;
   author?: string;
+  source_url?: string;
+  attribution_status?: 'pending' | 'verified' | 'not_found' | 'retryable_error';
+  verification_reason?: string;
+  verification_attempted_at?: string;
+  verified_at?: string;
   mood?: string;
   like_count?: number;
   created_at?: string;

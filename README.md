@@ -2,15 +2,21 @@
 
 ## 诗句出处核验
 
-AI 生成接口只返回诗句，不直接提供作者和篇名。页面展示诗句后会异步调用 `/api/verify-poem`：每首未缓存诗句只调用一次 Tavily，搜索“辨识度最高的单句 + 作者”；后端规则优先提取，规则无法处理时 DeepSeek 只分析同一批搜索片段，最终仍由后端检查原句、作者和篇名之间的证据关系。核验成功才显示署名并写入公共诗库，失败或超时则只显示诗句。
+AI 生成接口只返回诗句，不直接提供作者和篇名。页面展示诗句后会异步调用 `/api/verify-poem`。后端先按标准化诗句查询 Supabase：`verified` 直接返回署名，`not_found` 直接保持不署名，只有 `pending` 或已过一小时冷却期的 `retryable_error` 才调用一次 Tavily。搜索使用“辨识度最高的单句 + 作者”；后端规则优先提取，规则无法处理时 DeepSeek 只分析同一批搜索片段，最终仍由后端检查原句、作者和篇名之间的证据关系。
+
+正常完成搜索但没有可信出处会永久记录为 `not_found`；Tavily/DeepSeek 超时、限流、缺少密钥或程序错误只记录为 `retryable_error`，不会被误判成没有作者。核验结果由服务端写回数据库，数据库因此也是跨浏览器、跨 Vercel 实例的持久化核验缓存。
 
 Vercel 服务端环境变量：
 
 ```text
 TAVILY_API_KEY=tvly-...
+SUPABASE_URL=https://你的项目.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=你的_service_role_key
 ```
 
-不要使用 `VITE_` 前缀。浏览器会缓存已核验结果 30 天、未找到结果 10 分钟，以减少搜索额度消耗并避免短暂搜索波动长期影响结果。
+这些密钥只配置在 Vercel 服务端。`SUPABASE_SERVICE_ROLE_KEY` 不能使用 `VITE_` 前缀，也不能出现在浏览器代码中。浏览器会缓存已核验及数据库已确认未找到的结果 30 天，数据库记录是最终依据。
+
+首次上线前，在 Supabase SQL Editor 中执行 [`supabase/attribution-verification-migration.sql`](supabase/attribution-verification-migration.sql)。迁移会保留旧诗句、点赞、心情和时间，只清空旧作者与篇名并标记为 `pending`，之后在诗句实际出现时逐步核验。
 
 ## 诗句去重
 

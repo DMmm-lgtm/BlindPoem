@@ -6,12 +6,12 @@ export interface PoemAttribution {
   author: string;
   poem_title: string;
   source_url: string;
-  method: 'rules' | 'ai_fallback';
+  method: 'rules' | 'ai_fallback' | 'database';
 }
 
-const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v1';
+const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v2';
 const VERIFIED_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const NOT_FOUND_CACHE_TTL_MS = 10 * 60 * 1000;
+const NOT_FOUND_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 type AttributionCacheEntry = {
   attribution: PoemAttribution | null;
@@ -122,6 +122,7 @@ export async function verifyPoemAttribution(content: string): Promise<PoemAttrib
       'no_attribution_candidate',
       'candidate_not_supported',
       'not_found_cache',
+      'not_found_database',
     ].includes(data.verification_status || '');
     if (attribution || shouldCacheMiss) {
       cache[cacheKey] = {

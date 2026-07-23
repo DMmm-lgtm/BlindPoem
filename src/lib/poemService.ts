@@ -52,7 +52,7 @@ const LOCAL_FALLBACK_POEMS: Poem[] = [
   },
 ];
 
-const LOCAL_POEM_CACHE_KEY = 'blindpoem.localPoems.v1';
+const LOCAL_POEM_CACHE_KEY = 'blindpoem.localPoems.v2';
 const MAX_LOCAL_POEMS = 80;
 const RECENT_POEMS_KEY = 'blindpoem.recentPoems.v1';
 const MAX_RECENT_POEMS = 20;
@@ -184,12 +184,19 @@ export async function savePoemToDatabase(
   content: string,
   poem_title: string,
   author: string,
-  mood: string
+  mood: string,
+  source_url?: string
 ): Promise<boolean> {
   const poemToSave: Poem = {
     content,
+    content_key: normalizePoemContent(content),
     poem_title,
     author,
+    source_url,
+    attribution_status: 'verified',
+    verification_reason: 'verified_api',
+    verification_attempted_at: new Date().toISOString(),
+    verified_at: new Date().toISOString(),
     mood,
   };
 
@@ -277,6 +284,7 @@ export async function getRandomPoemFromDatabase(excludedContents: string[] = [])
     const { count, error: countError } = await supabase
       .from('poems')
       .select('id', { count: 'exact', head: true })
+      .eq('attribution_status', 'verified')
       .not('author', 'is', null)
       .not('author', 'in', '("未知","佚名","匿名","无","anonymous","unknown")');
 
@@ -307,6 +315,7 @@ export async function getRandomPoemFromDatabase(excludedContents: string[] = [])
       const { data, error } = await supabase
         .from('poems')
         .select('*')
+        .eq('attribution_status', 'verified')
         .not('author', 'is', null)
         .not('author', 'in', '("未知","佚名","匿名","无","anonymous","unknown")')
         .order('created_at', { ascending: false })

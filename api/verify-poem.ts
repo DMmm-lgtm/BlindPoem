@@ -13,14 +13,25 @@ type Attribution = {
   author: string;
   poem_title: string;
   source_url: string;
-  method: 'rules' | 'ai_fallback';
+  method: 'rules' | 'ai_fallback' | 'database';
+};
+
+type VerificationStatus = 'pending' | 'verified' | 'not_found' | 'retryable_error';
+
+type StoredPoem = {
+  author: string | null;
+  poem_title: string | null;
+  source_url: string | null;
+  attribution_status: VerificationStatus;
+  verification_attempted_at: string | null;
 };
 
 const SEARCH_TIMEOUT_MS = 6000;
 const AI_TIMEOUT_MS = 6000;
 const MAX_SNIPPET_LENGTH = 500;
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const NOT_FOUND_CACHE_TTL_MS = 10 * 60 * 1000;
+const NOT_FOUND_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const RETRYABLE_ERROR_COOLDOWN_MS = 60 * 60 * 1000;
 const attributionCache = new Map<string, { attribution: Attribution | null; expiresAt: number }>();
 const rateWindows = new Map<string, { count: number; resetAt: number }>();
 
@@ -30,6 +41,96 @@ function normalize(value: string): string {
     .replace(/[\s，。、；！？,.!?;:：“”"'‘’《》〈〉「」『』（）()【】{}]/g, '')
     .replaceAll('[', '')
     .replaceAll(']', '');
+}
+
+function getSupabaseAdminConfig(): { url: string; key: string } | null {
+  const url = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '')
+    .replace(/\/rest\/v1\/?$/, '')
+    .replace(/\/$/, '');
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+  return url && key ? { url, key } : null;
+}
+
+async function getStoredPoem(contentKey: string): Promise<StoredPoem | null> {
+  const config = getSupabaseAdminConfig();
+  if (!config) return null;
+  const query = new URLSearchParams({
+    select: 'author,poem_title,source_url,attribution_status,verification_attempted_at',
+    content_key: `eq.${contentKey}`,
+    limit: '20',
+  });
+  try {
+    const response = await fetch(`${config.url}/rest/v1/poems?${query}`, {
+      headers: { apikey: config.key, Authorization: `Bearer ${config.key}` },
+    });
+    if (!response.ok) {
+      console.warn('Supabase attribution lookup failed:', response.status);
+      return null;
+    }
+    const rows = await response.json() as StoredPoem[];
+    return rows.find((row) => (
+      row.attribution_status === 'verified' && row.author?.trim() && row.poem_title?.trim()
+    )) || rows.find((row) => row.attribution_status === 'not_found') || rows[0] || null;
+  } catch (error) {
+    console.warn('Supabase attribution lookup unavailable:', error);
+    return null;
+  }
+}
+
+async function persistVerification(
+  content: string,
+  status: VerificationStatus,
+  reason: string,
+  attribution: Attribution | null = null
+): Promise<void> {
+  const config = getSupabaseAdminConfig();
+  if (!config) return;
+  try {
+    const now = new Date().toISOString();
+    const contentKey = normalize(content);
+    const verificationFields = {
+      poem_title: attribution?.poem_title || null,
+      author: attribution?.author || null,
+      source_url: attribution?.source_url || null,
+      attribution_status: status,
+      verification_reason: reason,
+      verification_attempted_at: now,
+      verified_at: status === 'verified' ? now : null,
+    };
+    const updateQuery = new URLSearchParams({ content_key: `eq.${contentKey}` });
+    const updateResponse = await fetch(`${config.url}/rest/v1/poems?${updateQuery}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify(verificationFields),
+    });
+    if (!updateResponse.ok) {
+      console.warn('Supabase attribution update failed:', updateResponse.status, await updateResponse.text());
+      return;
+    }
+    const updatedRows = await updateResponse.json() as unknown[];
+    if (updatedRows.length > 0) return;
+
+    const insertResponse = await fetch(`${config.url}/rest/v1/poems`, {
+      method: 'POST',
+      headers: {
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({ content, content_key: contentKey, ...verificationFields }),
+    });
+    if (!insertResponse.ok && insertResponse.status !== 409) {
+      console.warn('Supabase attribution insert failed:', insertResponse.status, await insertResponse.text());
+    }
+  } catch (error) {
+    console.warn('Supabase attribution persistence unavailable:', error);
+  }
 }
 
 function isRateLimited(req: VercelRequest): boolean {
@@ -217,14 +318,14 @@ function extractWithRules(sources: SearchResult[]): Attribution | null {
   return null;
 }
 
-async function extractWithDeepSeek(content: string, sources: SearchResult[]): Promise<{
-  author: string;
-  poem_title: string;
-  source_id: number;
-  evidence: string;
-} | null> {
+type DeepSeekExtraction =
+  | { status: 'found'; author: string; poem_title: string; source_id: number; evidence: string }
+  | { status: 'not_found' }
+  | { status: 'retryable_error' };
+
+async function extractWithDeepSeek(content: string, sources: SearchResult[]): Promise<DeepSeekExtraction> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey || sources.length === 0) return null;
+  if (!apiKey || sources.length === 0) return { status: 'retryable_error' };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
@@ -257,12 +358,13 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
       signal: controller.signal,
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) return { status: 'retryable_error' };
     const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const raw = data.choices?.[0]?.message?.content;
-    if (!raw) return null;
+    if (!raw) return { status: 'retryable_error' };
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (parsed.status !== 'found') return null;
+    if (parsed.status === 'not_found') return { status: 'not_found' };
+    if (parsed.status !== 'found') return { status: 'retryable_error' };
 
     const author = cleanCandidate(String(parsed.author || ''));
     const poemTitle = cleanCandidate(String(parsed.poem_title || ''));
@@ -270,13 +372,17 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
     const evidence = String(parsed.evidence || '').trim();
     const source = sources.find((item) => item.id === sourceId);
 
-    if (!isPlausibleAuthor(author) || !poemTitle || !source || !evidence) return null;
-    if (!normalize(`${source.title} ${source.content}`).includes(normalize(evidence))) return null;
+    if (!isPlausibleAuthor(author) || !poemTitle || !source || !evidence) {
+      return { status: 'not_found' };
+    }
+    if (!normalize(`${source.title} ${source.content}`).includes(normalize(evidence))) {
+      return { status: 'not_found' };
+    }
 
-    return { author, poem_title: poemTitle, source_id: sourceId, evidence };
+    return { status: 'found', author, poem_title: poemTitle, source_id: sourceId, evidence };
   } catch (error) {
     console.warn('DeepSeek attribution fallback failed:', error);
-    return null;
+    return { status: 'retryable_error' };
   } finally {
     clearTimeout(timeout);
   }
@@ -313,16 +419,39 @@ function findCandidateEvidence(
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (isRateLimited(req)) return res.status(429).json({ error: 'Too many requests' });
 
   const content = String(req.body?.content || '').trim();
   if (!content) return res.status(400).json({ error: 'Missing poem content' });
   if (content.length > 160) return res.status(400).json({ error: 'Poem content is too long' });
-  if (!process.env.TAVILY_API_KEY) {
-    return res.status(200).json({ attribution: null, verification_status: 'missing_tavily_key' });
-  }
 
   const cacheKey = normalize(content);
+  const storedPoem = await getStoredPoem(cacheKey);
+  if (
+    storedPoem?.attribution_status === 'verified' &&
+    storedPoem.author?.trim() &&
+    storedPoem.poem_title?.trim()
+  ) {
+    const attribution: Attribution = {
+      author: storedPoem.author.trim(),
+      poem_title: storedPoem.poem_title.trim(),
+      source_url: storedPoem.source_url?.trim() || '',
+      method: 'database',
+    };
+    attributionCache.set(cacheKey, { attribution, expiresAt: Date.now() + CACHE_TTL_MS });
+    return res.status(200).json({ attribution, verification_status: 'verified_database' });
+  }
+  if (storedPoem?.attribution_status === 'not_found') {
+    attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
+    return res.status(200).json({ attribution: null, verification_status: 'not_found_database' });
+  }
+  if (
+    storedPoem?.attribution_status === 'retryable_error' &&
+    storedPoem.verification_attempted_at &&
+    Date.now() - new Date(storedPoem.verification_attempted_at).getTime() < RETRYABLE_ERROR_COOLDOWN_MS
+  ) {
+    return res.status(200).json({ attribution: null, verification_status: 'retryable_error_cooldown' });
+  }
+
   const cached = attributionCache.get(cacheKey);
   if (cached?.expiresAt && cached.expiresAt > Date.now()) {
     return res.status(200).json({
@@ -330,6 +459,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       verification_status: cached.attribution ? 'verified_cache' : 'not_found_cache',
     });
   }
+  if (!process.env.TAVILY_API_KEY) {
+    await persistVerification(content, 'retryable_error', 'missing_tavily_key');
+    return res.status(200).json({ attribution: null, verification_status: 'missing_tavily_key' });
+  }
+  if (isRateLimited(req)) return res.status(429).json({ error: 'Too many requests' });
 
   try {
     const searchableFragment = getSearchablePoemFragment(content);
@@ -340,22 +474,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 5);
     if (matchingSources.length === 0) {
       attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
+      await persistVerification(content, 'not_found', 'no_matching_source');
       return res.status(200).json({ attribution: null, verification_status: 'no_matching_source' });
     }
 
     const ruleAttribution = extractWithRules(matchingSources);
-    const aiCandidate = ruleAttribution ? null : await extractWithDeepSeek(content, matchingSources);
+    const aiExtraction = ruleAttribution
+      ? null
+      : await extractWithDeepSeek(content, matchingSources);
+    if (aiExtraction?.status === 'retryable_error') {
+      await persistVerification(content, 'retryable_error', 'ai_extraction_error');
+      return res.status(200).json({ attribution: null, verification_status: 'verification_error' });
+    }
     const candidate = ruleAttribution ? {
       author: ruleAttribution.author,
       poem_title: ruleAttribution.poem_title,
       method: 'rules' as const,
-    } : aiCandidate ? {
-      author: aiCandidate.author,
-      poem_title: aiCandidate.poem_title,
+    } : aiExtraction?.status === 'found' ? {
+      author: aiExtraction.author,
+      poem_title: aiExtraction.poem_title,
       method: 'ai_fallback' as const,
     } : null;
     if (!candidate) {
       attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
+      await persistVerification(content, 'not_found', 'no_attribution_candidate');
       return res.status(200).json({ attribution: null, verification_status: 'no_attribution_candidate' });
     }
 
@@ -376,12 +518,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       attribution,
       expiresAt: Date.now() + (attribution ? CACHE_TTL_MS : NOT_FOUND_CACHE_TTL_MS),
     });
+    await persistVerification(
+      content,
+      attribution ? 'verified' : 'not_found',
+      attribution ? `verified_${candidate.method}` : 'candidate_not_supported',
+      attribution
+    );
     return res.status(200).json({
       attribution,
       verification_status: attribution ? 'verified' : 'candidate_not_supported',
     });
   } catch (error) {
     console.error('Poem verification failed:', error);
+    await persistVerification(content, 'retryable_error', 'verification_error');
     return res.status(200).json({ attribution: null, verification_status: 'verification_error' });
   }
 }

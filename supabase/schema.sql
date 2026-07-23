@@ -3,8 +3,14 @@ create extension if not exists pgcrypto;
 create table if not exists public.poems (
   id uuid primary key default gen_random_uuid(),
   content text not null,
+  content_key text,
   poem_title text,
   author text,
+  source_url text,
+  attribution_status text not null default 'pending',
+  verification_reason text,
+  verification_attempted_at timestamptz,
+  verified_at timestamptz,
   mood text,
   like_count integer not null default 0,
   created_at timestamptz not null default now()
@@ -13,7 +19,36 @@ create table if not exists public.poems (
 alter table public.poems
 add column if not exists like_count integer not null default 0;
 
+alter table public.poems add column if not exists content_key text;
+alter table public.poems add column if not exists source_url text;
+alter table public.poems add column if not exists attribution_status text not null default 'pending';
+alter table public.poems add column if not exists verification_reason text;
+alter table public.poems add column if not exists verification_attempted_at timestamptz;
+alter table public.poems add column if not exists verified_at timestamptz;
+
+-- Existing author/title values came from the former generation flow and are
+-- deliberately discarded. They will be repopulated lazily after web verification.
+update public.poems
+set
+  content_key = lower(regexp_replace(content, '[[:space:]，。、；！？,.!?;:：“”"''‘’《》〈〉「」『』（）()【】{}\[\]]', '', 'g')),
+  poem_title = null,
+  author = null,
+  source_url = null,
+  attribution_status = 'pending',
+  verification_reason = 'legacy_reset',
+  verification_attempted_at = null,
+  verified_at = null
+where content_key is null;
+
+alter table public.poems
+drop constraint if exists poems_attribution_status_check;
+alter table public.poems
+add constraint poems_attribution_status_check
+check (attribution_status in ('pending', 'verified', 'not_found', 'retryable_error'));
+
 create unique index if not exists poems_content_key on public.poems (content);
+drop index if exists public.poems_normalized_content_key;
+create index if not exists poems_normalized_content_key on public.poems (content_key);
 create index if not exists poems_created_at_idx on public.poems (created_at desc);
 create index if not exists poems_mood_idx on public.poems (mood);
 
@@ -34,8 +69,10 @@ to anon
 with check (
   length(trim(content)) > 0
   and length(content) <= 500
-  and (poem_title is null or length(poem_title) <= 200)
-  and (author is null or length(author) <= 120)
+  and attribution_status = 'pending'
+  and poem_title is null
+  and author is null
+  and source_url is null
   and (mood is null or length(mood) <= 120)
 );
 

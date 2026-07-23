@@ -3108,7 +3108,8 @@ function App() {
           normalizedContent,
           attribution.poem_title,
           attribution.author,
-          keyword
+          keyword,
+          attribution.source_url
         );
       });
 
