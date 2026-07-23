@@ -17,10 +17,11 @@ When a visitor clicks an emoji:
 
 1. Try AI generation through `/api/generate-poem`.
 2. Use OpenRouter free text models at most once every 90 seconds per warm backend instance, with DeepSeek handling requests during the cooldown.
-3. Save successful AI poems to Supabase and browser localStorage.
-4. If AI fails, read from Supabase.
-5. If Supabase fails, read browser localStorage.
-6. If localStorage is empty, use built-in fallback poems.
+3. Display the generated poem immediately, then verify its attribution asynchronously through `/api/verify-poem` and Tavily.
+4. Show and save author/title metadata only after search confirmation; unverified poems remain usable without attribution.
+5. If AI generation fails, read from Supabase.
+6. If Supabase fails, read browser localStorage.
+7. If localStorage is empty, use built-in fallback poems.
 
 ## Important Boundaries
 
@@ -55,6 +56,7 @@ Vercel environment variables include:
 - `OPENROUTER_SITE_URL`
 - `DEEPSEEK_API_KEY`
 - `DEEPSEEK_MODEL`
+- `TAVILY_API_KEY`
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_AI_IMAGE_MODEL`

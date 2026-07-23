@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import { generatePoem } from './lib/aiClient';
+import { generatePoem, verifyPoemAttribution } from './lib/aiClient';
 import {
   savePoemToDatabase,
   getRandomPoemFromDatabase,
@@ -14,6 +14,7 @@ import {
   readFavorites,
   removeFavorite,
   updateFavoriteShareImage,
+  updateFavoriteAttribution,
 } from './lib/favoriteService';
 import type { FavoritePoem } from './lib/favoriteService';
 import {
@@ -485,17 +486,27 @@ function getPosterMetaBounds(
   poem: FavoritePoem
 ) {
   const isVertical = layout.kind.includes('vertical');
+  const hasAttribution = Boolean(poem.poem_title.trim() && poem.author.trim());
+
+  if (!hasAttribution) {
+    return {
+      left: layout.x,
+      top: layout.y,
+      right: layout.x + layout.width,
+      bottom: layout.y + layout.height,
+    };
+  }
 
   if (!isVertical) {
     return {
       left: layout.x,
       top: layout.y + layout.height + metrics.metaLineHeight * 0.35,
       right: layout.x + layout.width,
-      bottom: layout.y + layout.height + metrics.metaLineHeight * 1.45,
+      bottom: layout.y + layout.height + (hasAttribution ? metrics.metaLineHeight * 1.45 : 0),
     };
   }
 
-  const metaHeight = [...formatVerticalBookTitle(poem.poem_title)].length
+  const metaHeight = (hasAttribution ? [...formatVerticalBookTitle(poem.poem_title)].length : 0)
     * metrics.metaLineHeight;
   const metaWidth = metrics.metaFontSize;
   const isLeftToRight = layout.kind === 'upper-left-vertical';
@@ -690,6 +701,7 @@ function App() {
     content: string;
     poem_title: string;
     author: string;
+    source_url?: string;
   } | null>(null);
   // Developer access is unlocked through the two-stage hidden click sequence.
   const [isDeveloperMode, setIsDeveloperMode] = useState(false);
@@ -2314,7 +2326,9 @@ function App() {
     setIsLoved(true);
     setShowQRCode(true);
     setIsQRFadingOut(false);
-    await incrementPoemLike(poemData.content, poemData.poem_title, poemData.author);
+    if (poemData.author && poemData.poem_title) {
+      await incrementPoemLike(poemData.content, poemData.poem_title, poemData.author);
+    }
   };
 
   const handleRemoveFavorite = (favoriteId: string) => {
@@ -2848,7 +2862,10 @@ function App() {
   const handleCopyShareText = async () => {
     if (!selectedFavorite) return;
 
-    const text = `${selectedFavorite.content}\n《${selectedFavorite.poem_title}》— ${selectedFavorite.author}\nBlindPoem 盲盒诗`;
+    const attribution = selectedFavorite.author && selectedFavorite.poem_title
+      ? `\n《${selectedFavorite.poem_title}》— ${selectedFavorite.author}`
+      : '';
+    const text = `${selectedFavorite.content}${attribution}\nBlindPoem 盲盒诗`;
     await navigator.clipboard?.writeText(text);
     setShareMessage('诗句文案已复制。');
   };
@@ -3063,22 +3080,37 @@ function App() {
       console.log('✅ 诗句生成 API 返回成功:', poem);
       const normalizedContent = formatPoemForDisplay(poem.content);
       
-      // 展示诗句
+      // 先展示诗句，出处在后台核验；生成模型不再提供作者和篇名。
       setPoemData({
         content: normalizedContent,
-        poem_title: poem.poem_title,
-        author: poem.author,
+        poem_title: '',
+        author: '',
       });
       rememberRecentPoem(normalizedContent);
       scheduleEmojiReplacementAfterPoemAppears();
 
-      // 异步保存到数据库（不阻塞 UI）
-      savePoemToDatabase(
-        normalizedContent,
-        poem.poem_title,
-        poem.author,
-        keyword
-      );
+      // 核验不阻塞诗句展示；只有核验成功的署名才会显示并写入公共诗库。
+      void verifyPoemAttribution(normalizedContent).then((attribution) => {
+        if (!attribution) return;
+        setPoemData((current) => current?.content === normalizedContent ? {
+          ...current,
+          poem_title: attribution.poem_title,
+          author: attribution.author,
+          source_url: attribution.source_url,
+        } : current);
+        const updatedFavorites = updateFavoriteAttribution(normalizedContent, {
+          author: attribution.author,
+          poem_title: attribution.poem_title,
+          source_url: attribution.source_url,
+        });
+        setFavorites(updatedFavorites);
+        void savePoemToDatabase(
+          normalizedContent,
+          attribution.poem_title,
+          attribution.author,
+          keyword
+        );
+      });
 
       console.log('✅ AI 返回成功：', poem);
     } catch (error) {
@@ -3676,7 +3708,7 @@ function App() {
                         </button>
                       )}
                     </div>
-                    {posterTextPreviewMetrics && (
+                    {posterTextPreviewMetrics && selectedFavorite.author && selectedFavorite.poem_title && (
                       <div
                         className={`poster-text-meta poster-text-meta-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} poster-text-meta-${draftPosterLayout.kind}`}
                         style={{
@@ -3961,6 +3993,17 @@ function App() {
                 ))}
               </div>
             </a>
+            {poemData.author && poemData.poem_title && (
+              <a
+                href={poemData.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="poem-attribution"
+                title="查看出处"
+              >
+                ——{poemData.author}《{poemData.poem_title}》
+              </a>
+            )}
             
             {/* 按钮区域 */}
             <div className="mt-4 flex items-center justify-start">

@@ -235,6 +235,11 @@ export async function incrementPoemLike(
   poem_title: string,
   author: string
 ): Promise<number | null> {
+  if (!hasKnownAuthor({ author }) || !poem_title.trim()) {
+    console.info('ℹ️ 未核验出处的诗句不写入公共点赞统计');
+    return null;
+  }
+
   if (!isSupabaseConfigured || !supabase) {
     console.info('ℹ️ 未配置 Supabase，本次喜欢只保存在浏览器收藏夹');
     return null;

@@ -3,6 +3,7 @@ export interface FavoritePoem {
   content: string;
   poem_title: string;
   author: string;
+  source_url?: string;
   createdAt: string;
   shareImage?: string;
   shareImageCreatedAt?: string;
@@ -142,6 +143,7 @@ export function addFavorite(poem: {
   content: string;
   poem_title: string;
   author: string;
+  source_url?: string;
 }): FavoritePoem[] {
   const id = getFavoriteId(poem.content);
   const existingFavorites = readFavorites();
@@ -152,6 +154,7 @@ export function addFavorite(poem: {
     content: normalizeFavoriteContent(poem.content),
     poem_title: poem.poem_title,
     author: poem.author,
+    source_url: poem.source_url,
     createdAt: existingFavorite?.createdAt || new Date().toISOString(),
   };
 
@@ -163,6 +166,19 @@ export function addFavorite(poem: {
 
 export function removeFavorite(favoriteId: string): FavoritePoem[] {
   return writeFavorites(readFavorites().filter((favorite) => favorite.id !== favoriteId));
+}
+
+export function updateFavoriteAttribution(
+  content: string,
+  attribution: Pick<FavoritePoem, 'author' | 'poem_title' | 'source_url'>
+): FavoritePoem[] {
+  const favoriteId = getFavoriteId(content);
+  const favorites = readFavorites();
+  if (!favorites.some((favorite) => favorite.id === favoriteId)) return favorites;
+
+  return writeFavorites(favorites.map((favorite) => favorite.id === favoriteId
+    ? { ...favorite, ...attribution }
+    : favorite));
 }
 
 export function updateFavoriteShareImage(

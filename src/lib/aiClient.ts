@@ -1,7 +1,47 @@
 export interface PoemResponse {
-  content: string;      // 诗句内容（≤30字）
-  poem_title: string;   // 诗名
-  author: string;       // 作者
+  content: string;
+}
+
+export interface PoemAttribution {
+  author: string;
+  poem_title: string;
+  source_url: string;
+  method: 'rules' | 'ai_fallback';
+}
+
+const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v1';
+const VERIFIED_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const NOT_FOUND_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+type AttributionCacheEntry = {
+  attribution: PoemAttribution | null;
+  expiresAt: number;
+};
+
+function normalizePoemCacheKey(content: string): string {
+  return content.toLowerCase().replace(/[\s，。、；！？,.!?;:：“”"'‘’《》]/g, '');
+}
+
+function readAttributionCache(): Record<string, AttributionCacheEntry> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ATTRIBUTION_CACHE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAttributionCache(cache: Record<string, AttributionCacheEntry>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const liveEntries = Object.entries(cache)
+      .filter(([, entry]) => entry?.expiresAt > Date.now())
+      .slice(-100);
+    window.localStorage.setItem(ATTRIBUTION_CACHE_KEY, JSON.stringify(Object.fromEntries(liveEntries)));
+  } catch {
+    // Verification remains available when storage is unavailable or full.
+  }
 }
 
 /**
@@ -42,7 +82,7 @@ export async function generatePoem(
     const poemData: PoemResponse = await response.json();
     console.log('✅ 诗句生成成功:', poemData);
 
-    if (!poemData.content || !poemData.poem_title || !poemData.author) {
+    if (!poemData.content) {
       throw new Error('Invalid poem data from API');
     }
 
@@ -51,5 +91,39 @@ export async function generatePoem(
     clearTimeout(timeoutId);
     console.error('❌ 诗句生成失败:', error);
     throw error;
+  }
+}
+
+export async function verifyPoemAttribution(content: string): Promise<PoemAttribution | null> {
+  const cacheKey = normalizePoemCacheKey(content);
+  const cache = readAttributionCache();
+  const cached = cache[cacheKey];
+  if (cached?.expiresAt > Date.now()) return cached.attribution;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 22000);
+
+  try {
+    const response = await fetch('/api/verify-poem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json() as { attribution?: PoemAttribution | null };
+    const attribution = data.attribution || null;
+    cache[cacheKey] = {
+      attribution,
+      expiresAt: Date.now() + (attribution ? VERIFIED_CACHE_TTL_MS : NOT_FOUND_CACHE_TTL_MS),
+    };
+    writeAttributionCache(cache);
+    return attribution;
+  } catch (error) {
+    console.warn('诗句出处核验失败，本次仅展示诗句：', error);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

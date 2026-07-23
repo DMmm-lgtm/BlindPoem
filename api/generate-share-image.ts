@@ -269,18 +269,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { content, poem_title, author } = req.body as ShareImageRequest;
-  if (!content || !poem_title || !author) {
-    return res.status(400).json({ error: 'Missing poem fields' });
+  if (!content) {
+    return res.status(400).json({ error: 'Missing poem content' });
   }
 
   let visualBrief: string | null = null;
   let prompt: string;
   try {
-    visualBrief = await buildVisualBrief(content, poem_title, author);
+    visualBrief = await buildVisualBrief(content, poem_title || '', author || '');
     prompt = buildImagePromptFromBrief(visualBrief);
   } catch (briefError) {
     console.error('❌ DeepSeek 图片 brief 失败，回退到原诗句图片 prompt:', briefError);
-    prompt = buildFallbackImagePrompt(content, poem_title, author);
+    prompt = buildFallbackImagePrompt(content, poem_title || '', author || '');
   }
 
   try {

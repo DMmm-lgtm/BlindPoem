@@ -889,6 +889,17 @@ function formatVerticalBookTitle(title: string): string {
   return `︽${cleanedTitle}︾`;
 }
 
+function hasPoemAttribution(poem: Pick<FavoritePoem, 'poem_title' | 'author'>): boolean {
+  return Boolean(poem.poem_title.trim() && poem.author.trim());
+}
+
+function getPoemShareText(poem: FavoritePoem): string {
+  const attribution = hasPoemAttribution(poem)
+    ? `\n《${poem.poem_title}》— ${poem.author}`
+    : '';
+  return `${poem.content}${attribution}\nBlindPoem 盲盒诗`;
+}
+
 function drawEnglishPosterText(
   context: CanvasRenderingContext2D,
   poem: FavoritePoem,
@@ -921,6 +932,7 @@ function drawEnglishPosterText(
   const metaLineHeight = Math.round(metaFontSize * 1.32);
   context.font = `${metaFontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
   context.textAlign = 'right';
+  if (!hasPoemAttribution(poem)) return;
   const metaText = `《${poem.poem_title}》`;
   const metaLines = wrapEnglishText(context, metaText, layout.width);
   const metaY = clamp(
@@ -1291,15 +1303,17 @@ function drawPosterText(
       layout.x + layout.width + metaLineHeight
     );
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
-    drawVerticalColumns(
-      context,
-      [formatVerticalBookTitle(poem.poem_title)],
-      metaStartX,
-      layout.y,
-      metaLineHeight,
-      metaLineHeight,
-      1
-    );
+    if (hasPoemAttribution(poem)) {
+      drawVerticalColumns(
+        context,
+        [formatVerticalBookTitle(poem.poem_title)],
+        metaStartX,
+        layout.y,
+        metaLineHeight,
+        metaLineHeight,
+        1
+      );
+    }
   } else if (layout.kind === 'right-vertical') {
     const poemColumns = fitVerticalPoemColumns(
       getPoemSourceLines(layout.text),
@@ -1327,15 +1341,17 @@ function drawPosterText(
     const metaLineHeight = Math.round(34 * metaScale);
     const metaStartX = Math.max(metaFontSize / 2 + 18, layout.x - metaLineHeight);
     context.font = `${metaFontSize}px QianTuBiFeng, serif`;
-    drawVerticalColumns(
-      context,
-      [formatVerticalBookTitle(poem.poem_title)],
-      metaStartX,
-      layout.y,
-      metaLineHeight,
-      metaLineHeight,
-      -1
-    );
+    if (hasPoemAttribution(poem)) {
+      drawVerticalColumns(
+        context,
+        [formatVerticalBookTitle(poem.poem_title)],
+        metaStartX,
+        layout.y,
+        metaLineHeight,
+        metaLineHeight,
+        -1
+      );
+    }
   } else {
     const isRight = layout.kind === 'bottom-right-small';
     const x = isRight ? layout.x + layout.width : layout.x;
@@ -1368,7 +1384,9 @@ function drawPosterText(
       POSTER_HEIGHT - 28
     );
     context.textAlign = 'right';
-    context.fillText(`《${poem.poem_title}》`, layout.x + layout.width, metaY, layout.width);
+    if (hasPoemAttribution(poem)) {
+      context.fillText(`《${poem.poem_title}》`, layout.x + layout.width, metaY, layout.width);
+    }
   }
 
   context.restore();
@@ -1449,16 +1467,24 @@ function posterBoundsOverlap(
 
 function getPosterLayoutContentBounds(poem: FavoritePoem, layout: PosterTextLayout) {
   const metrics = getPosterTextPreviewMetrics(poem, layout);
+  if (!hasPoemAttribution(poem)) {
+    return {
+      left: layout.x,
+      top: layout.y,
+      right: layout.x + layout.width,
+      bottom: layout.y + layout.height,
+    };
+  }
   if (!layout.kind.includes('vertical')) {
     return {
       left: layout.x,
       top: layout.y,
       right: layout.x + layout.width,
-      bottom: layout.y + layout.height + metrics.metaLineHeight * 1.45,
+      bottom: layout.y + layout.height + (hasPoemAttribution(poem) ? metrics.metaLineHeight * 1.45 : 0),
     };
   }
 
-  const metaHeight = [...formatVerticalBookTitle(poem.poem_title)].length
+  const metaHeight = (hasPoemAttribution(poem) ? [...formatVerticalBookTitle(poem.poem_title)].length : 0)
     * metrics.metaLineHeight;
   const metaWidth = metrics.metaFontSize;
   const metaLeft = layout.kind === 'upper-left-vertical'
@@ -1597,14 +1623,15 @@ export async function generateShareImage(
 export function downloadShareImage(image: string, poem: FavoritePoem): void {
   const link = document.createElement('a');
   link.href = image;
-  link.download = `blindpoem-${poem.author}-${poem.poem_title}.jpg`;
+  const suffix = hasPoemAttribution(poem) ? `${poem.author}-${poem.poem_title}` : 'poem';
+  link.download = `blindpoem-${suffix}.jpg`;
   link.click();
 }
 
 export async function sharePoster(image: string, poem: FavoritePoem): Promise<boolean> {
   if (!navigator.share) return false;
 
-  const text = `${poem.content}\n《${poem.poem_title}》— ${poem.author}\nBlindPoem 盲盒诗\n${WEBSITE_URL}`;
+  const text = `${getPoemShareText(poem)}\n${WEBSITE_URL}`;
 
   try {
     const blob = await (await fetch(image)).blob();
