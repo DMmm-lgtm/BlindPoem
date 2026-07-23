@@ -193,11 +193,25 @@ function extractRelevantSnippet(rawContent: string, poemContent: string, fallbac
 }
 
 function containsPoem(result: SearchResult, content: string): boolean {
-  const haystack = normalize(`${result.title} ${result.content}`);
-  const fragments = poemFragments(content);
-  return fragments.some((fragment, index) => (
-    index === 0 ? haystack.includes(fragment) : fragment.length >= 6 && haystack.includes(fragment)
+  const completePoem = normalize(content);
+  if (!completePoem) return false;
+
+  // Attribution is attached to the whole displayed excerpt, so a source must
+  // contain that whole excerpt. Matching only one clause must never authorize
+  // an author/title for synthetic text joined to a genuine quotation.
+  return normalize(result.title).includes(completePoem)
+    || normalize(result.content).includes(completePoem);
+}
+
+function containsPartialPoem(result: SearchResult, content: string): boolean {
+  const fullPoem = normalize(content);
+  const haystacks = [normalize(result.title), normalize(result.content)];
+  if (haystacks.some((text) => text.includes(fullPoem))) return false;
+
+  const fragments = poemFragments(content).filter((fragment) => (
+    fragment !== fullPoem && fragment.length >= 6
   ));
+  return fragments.some((fragment) => haystacks.some((text) => text.includes(fragment)));
 }
 
 function isMostlyChinese(content: string): boolean {
@@ -479,9 +493,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const searchResults = await tavilySearch(discoveryQuery, content);
     const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 5);
     if (matchingSources.length === 0) {
+      const reason = searchResults.some((result) => containsPartialPoem(result, content))
+        ? 'partial_poem_match'
+        : 'no_matching_source';
       attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
-      await persistVerification(content, 'not_found', 'no_matching_source');
-      return res.status(200).json({ attribution: null, verification_status: 'no_matching_source' });
+      await persistVerification(content, 'not_found', reason);
+      return res.status(200).json({ attribution: null, verification_status: reason });
     }
 
     const ruleAttribution = extractWithRules(matchingSources);

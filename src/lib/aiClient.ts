@@ -119,6 +119,7 @@ export async function verifyPoemAttribution(content: string): Promise<PoemAttrib
     const attribution = data.attribution || null;
     const shouldCacheMiss = [
       'no_matching_source',
+      'partial_poem_match',
       'no_attribution_candidate',
       'candidate_not_supported',
       'not_found_cache',
