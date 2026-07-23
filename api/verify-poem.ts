@@ -241,11 +241,11 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
         messages: [
           {
             role: 'system',
-            content: 'You extract poem attribution only from the supplied web-search results. Never use memory to add facts absent from the results. Return JSON only.',
+            content: 'You propose a poem attribution candidate from the supplied web-search results. You may use literary knowledge when snippets are incomplete, but the backend will reject any author or title not supported by those results. Return JSON only.',
           },
           {
             role: 'user',
-            content: `待核验诗句：${content}\n搜索片段：${JSON.stringify(sources.map(({ id, title, content: snippet }) => ({ id, title, snippet })))}\n只能从这些搜索结果中提取作者和作品篇名，不得凭记忆补充。必须引用一个确实包含待核验诗句的 source_id 和原文 evidence。作者和篇名必须能在搜索结果集合中找到；无法确定、只有相似句或结果冲突时返回 not_found。返回：{"status":"found|not_found","author":"","poem_title":"","source_id":0,"evidence":""}`,
+            content: `待核验诗句：${content}\n搜索片段：${JSON.stringify(sources.map(({ id, title, content: snippet }) => ({ id, title, snippet })))}\n请从搜索结果中提取最可能的作者和作品篇名。片段信息不完整时可以用文学知识提出候选，但候选最终必须能被同一批搜索结果支持。必须引用一个确实包含待核验诗句的 source_id 和原文 evidence。无法提出单一候选、只有相似句或结果冲突时返回 not_found。返回：{"status":"found|not_found","author":"","poem_title":"","source_id":0,"evidence":""}`,
           },
         ],
         temperature: 0,
