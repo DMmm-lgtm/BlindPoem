@@ -140,7 +140,7 @@ export function rememberRecentPoem(content: string): void {
   window.localStorage.setItem(RECENT_POEMS_KEY, JSON.stringify(next));
 }
 
-function getLocalFallbackPoem(excludedContents: string[] = []): Poem {
+function getLocalFallbackPoem(excludedContents: string[] = []): Poem | null {
   const cachedPoems = readLocalPoems();
   const localFallbackPoems = LOCAL_FALLBACK_POEMS.filter(hasKnownAuthor);
   const excluded = new Set(excludedContents.map(normalizePoemContent));
@@ -150,7 +150,8 @@ function getLocalFallbackPoem(excludedContents: string[] = []): Poem {
     ) === index
   );
   const freshPool = combinedPool.filter((poem) => !excluded.has(normalizePoemContent(poem.content)));
-  const poemPool = freshPool.length > 0 ? freshPool : combinedPool;
+  const poemPool = freshPool;
+  if (poemPool.length === 0) return null;
   const randomIndex = Math.floor(Math.random() * poemPool.length);
   return poemPool[randomIndex];
 }
@@ -301,7 +302,6 @@ export async function getRandomPoemFromDatabase(excludedContents: string[] = [])
     const excluded = new Set(excludedContents.map(normalizePoemContent));
     const attemptedOffsets = new Set<number>();
     const maxAttempts = Math.min(count, excluded.size + 1);
-    let firstRandomPoem: Poem | null = null;
 
     // Draw offsets uniformly from the entire filtered table. Sampling without
     // replacement preserves equal probability while allowing recent results to be rejected.
@@ -329,7 +329,6 @@ export async function getRandomPoemFromDatabase(excludedContents: string[] = [])
 
       const candidate = data?.find(hasKnownAuthor) || null;
       if (!candidate) continue;
-      firstRandomPoem ||= candidate;
 
       if (!excluded.has(normalizePoemContent(candidate.content))) {
         console.log('✅ 从全部数据库中随机读取到诗句：', candidate.content);
@@ -337,17 +336,9 @@ export async function getRandomPoemFromDatabase(excludedContents: string[] = [])
       }
     }
 
-    // This only happens when the database itself contains no poem outside the
-    // browser's recent list. Returning the first uniform draw is then unavoidable.
-    const randomPoem = firstRandomPoem;
-
-    if (!randomPoem) {
-      console.warn('⚠️ 随机诗句作者未知，改用本地备用诗句');
-      return getLocalFallbackPoem(excludedContents);
-    }
-
-    console.log('⚠️ 数据库诗句均在最近记录中，允许重复返回：', randomPoem.content);
-    return randomPoem;
+    // 数据库没有最近 20 条之外的诗句时，只尝试同样排除最近记录的本地备用池。
+    console.warn('⚠️ 数据库中没有最近记录之外的诗句，尝试本地备用诗句');
+    return getLocalFallbackPoem(excludedContents);
   } catch (error) {
     console.error('❌ getRandomPoemFromDatabase 错误：', error);
     return getLocalFallbackPoem(excludedContents);

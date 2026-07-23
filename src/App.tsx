@@ -3055,26 +3055,15 @@ function App() {
       const normalizedForComparison = (content: string) => content
         .replace(/[\s，。、；！？,.!?;:：“”"'‘’《》]/g, '')
         .toLowerCase();
-      let poem: Awaited<ReturnType<typeof generatePoem>> | null = null;
+      const poem = await generatePoem(keyword, mood);
+      const normalizedCandidate = normalizedForComparison(formatPoemForDisplay(poem.content));
+      const isRecentDuplicate = recentPoems.some(
+        (content) => normalizedForComparison(content) === normalizedCandidate
+      );
 
-      // AI 返回最近 N 条中的重复内容时，再搜索一次；两次都不可用才进入数据库回退。
-      for (let attempt = 1; attempt <= 2; attempt += 1) {
-        const candidate = await generatePoem(keyword, mood);
-        const normalizedCandidate = normalizedForComparison(formatPoemForDisplay(candidate.content));
-        const isRecentDuplicate = recentPoems.some(
-          (content) => normalizedForComparison(content) === normalizedCandidate
-        );
-
-        if (!isRecentDuplicate) {
-          poem = candidate;
-          break;
-        }
-
-        console.warn(`⚠️ AI 第 ${attempt} 次返回最近出现过的诗句${attempt < 2 ? '，重新搜索' : ''}`);
-      }
-
-      if (!poem) {
-        throw new Error('AI 两次返回了最近出现过的诗句');
+      // AI 与浏览器最近 20 条重复时，不再调用 AI，直接进入数据库回退。
+      if (isRecentDuplicate) {
+        throw new Error('AI 返回了最近出现过的诗句');
       }
 
       console.log('✅ 诗句生成 API 返回成功:', poem);
