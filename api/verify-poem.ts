@@ -157,6 +157,21 @@ function cleanCandidate(value: string): string {
     .trim();
 }
 
+function isPlausibleAuthor(author: string): boolean {
+  const invalid = /^(?:字词|译文|注释|赏析|原文|作者|诗人|词人|作品|古诗|诗词|佚名|匿名|未知)$/i;
+  if (!author || invalid.test(author)) return false;
+  if (/^[\p{Script=Han}]+$/u.test(author) && author.length > 6) return false;
+  return author.length <= 40;
+}
+
+function getSourceDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
 function extractWithRules(sources: SearchResult[]): Attribution | null {
   const titlePatterns = [
     /《([^《》]{1,60})》/,
@@ -175,21 +190,21 @@ function extractWithRules(sources: SearchResult[]): Attribution | null {
     const author = authorPatterns.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
     const cleanedTitle = title ? cleanCandidate(title) : '';
     const cleanedAuthor = author ? cleanCandidate(author) : '';
-    return cleanedTitle && cleanedAuthor
+    return cleanedTitle && isPlausibleAuthor(cleanedAuthor)
       ? [{ author: cleanedAuthor, poem_title: cleanedTitle, source }]
       : [];
   });
 
   for (const candidate of candidates) {
-    const agreementCount = candidates.filter((other) => (
+    const agreeingCandidates = candidates.filter((other) => (
       normalize(other.author) === normalize(candidate.author) &&
       normalize(other.poem_title) === normalize(candidate.poem_title)
-    )).length;
-    const sameSourceHasAll = normalize(`${candidate.source.title} ${candidate.source.content}`)
-      .includes(normalize(candidate.author)) && normalize(`${candidate.source.title} ${candidate.source.content}`)
-      .includes(normalize(candidate.poem_title));
+    ));
+    const agreementDomains = new Set(
+      agreeingCandidates.map((other) => getSourceDomain(other.source.url))
+    );
 
-    if (agreementCount >= 2 || sameSourceHasAll) {
+    if (agreementDomains.size >= 2) {
       return {
         author: candidate.author,
         poem_title: candidate.poem_title,
@@ -255,7 +270,7 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
     const evidence = String(parsed.evidence || '').trim();
     const source = sources.find((item) => item.id === sourceId);
 
-    if (!author || !poemTitle || !source || !evidence) return null;
+    if (!isPlausibleAuthor(author) || !poemTitle || !source || !evidence) return null;
     if (!normalize(`${source.title} ${source.content}`).includes(normalize(evidence))) return null;
 
     return { author, poem_title: poemTitle, source_id: sourceId, evidence };
