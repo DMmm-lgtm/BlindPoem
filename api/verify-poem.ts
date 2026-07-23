@@ -133,6 +133,7 @@ async function tavilySearch(query: string, poemContent: string): Promise<SearchR
 
 function cleanCandidate(value: string): string {
   return value
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
     .replace(/^(?:作者|诗人|词人|原作者)[：:\s]*/i, '')
     .replace(/(?:原文|翻译|赏析|全文|古诗|诗词).*$/i, '')
     .replace(/^[《》“”"'‘’\s]+|[《》“”"'‘’\s]+$/g, '')
@@ -147,8 +148,6 @@ function extractWithRules(sources: SearchResult[]): Attribution | null {
   const authorPatterns = [
     /作者[：:\s]+([\p{L}·.-]{2,40})/u,
     /(?:唐代|宋代|元代|明代|清代|近代|现代|当代)?(?:诗人|词人|作家)[：:\s]*([\p{L}·.-]{2,40}?)(?:创作|所作|写作|的作品|的诗)/u,
-    /([\p{L}·.-]{2,40})[\s·—–-]+《[^》]+》/u,
-    /《[^》]+》[\s·—–-]+([\p{L}·.-]{2,40})/u,
   ];
 
   const candidates = sources.flatMap((source) => {
