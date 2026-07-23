@@ -215,11 +215,11 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
         messages: [
           {
             role: 'system',
-            content: 'You extract attribution only from supplied web search snippets. Never answer from memory. Return JSON only.',
+            content: 'You propose a poem attribution candidate for a separate web-search verification step. Use the supplied snippets first; you may use literary knowledge only to propose a candidate, never as final proof. Return JSON only.',
           },
           {
             role: 'user',
-            content: `待核验诗句：${content}\n搜索片段：${JSON.stringify(sources.map(({ id, title, content: snippet }) => ({ id, title, snippet })))}\n只能从片段中提取明确的作者和作品篇名。可把别号规范为通用作者名，但必须引用支持判断的原文。无法确定或结果冲突时 status 返回 not_found。返回：{"status":"found|not_found","author":"","poem_title":"","source_id":0,"evidence":""}`,
+            content: `待核验诗句：${content}\n搜索片段：${JSON.stringify(sources.map(({ id, title, content: snippet }) => ({ id, title, snippet })))}\n请提出最可能的作者和作品篇名，供后端发起第二次独立搜索验证。优先依据片段；片段署名不完整时可以使用文学知识提出候选，但不要把记忆当作证据。必须引用一个确实包含待核验诗句的 source_id 和原文 evidence。无法提出单一候选或结果冲突时返回 not_found。返回：{"status":"found|not_found","author":"","poem_title":"","source_id":0,"evidence":""}`,
           },
         ],
         temperature: 0,
