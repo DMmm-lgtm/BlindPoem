@@ -82,6 +82,12 @@ function containsPoem(result: SearchResult, content: string): boolean {
   ));
 }
 
+function isMostlyChinese(content: string): boolean {
+  const chineseCount = content.match(/[\u3400-\u9fff]/g)?.length || 0;
+  const visibleCount = content.replace(/\s/g, '').length || 1;
+  return chineseCount / visibleCount >= 0.3;
+}
+
 async function tavilySearch(query: string, poemContent: string): Promise<SearchResult[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) throw new Error('Missing TAVILY_API_KEY');
@@ -148,6 +154,8 @@ function extractWithRules(sources: SearchResult[]): Attribution | null {
   const authorPatterns = [
     /作者[：:\s]+([\p{L}·.-]{2,40})/u,
     /(?:唐代|宋代|元代|明代|清代|近代|现代|当代)?(?:诗人|词人|作家)[：:\s]*([\p{L}·.-]{2,40}?)(?:创作|所作|写作|的作品|的诗)/u,
+    /(?:^|[|｜_—-])([\p{Script=Han}]{2,4})《/u,
+    /》([\p{Script=Han}]{2,4})(?:$|[|｜_—-])/u,
   ];
 
   const candidates = sources.flatMap((source) => {
@@ -277,7 +285,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const searchResults = await tavilySearch(`"${content}" poem author title 出自 作者`, content);
+    const discoveryQuery = isMostlyChinese(content)
+      ? `"${content}" 作者 作品`
+      : `"${content}" poem author title`;
+    const searchResults = await tavilySearch(discoveryQuery, content);
     const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 3);
     if (matchingSources.length === 0) {
       attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + 60 * 60 * 1000 });
