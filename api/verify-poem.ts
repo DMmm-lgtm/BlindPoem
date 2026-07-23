@@ -20,6 +20,7 @@ const SEARCH_TIMEOUT_MS = 6000;
 const AI_TIMEOUT_MS = 6000;
 const MAX_SNIPPET_LENGTH = 500;
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const NOT_FOUND_CACHE_TTL_MS = 10 * 60 * 1000;
 const attributionCache = new Map<string, { attribution: Attribution | null; expiresAt: number }>();
 const rateWindows = new Map<string, { count: number; resetAt: number }>();
 
@@ -114,7 +115,7 @@ async function tavilySearch(query: string, poemContent: string): Promise<SearchR
         query,
         topic: 'general',
         search_depth: 'basic',
-        max_results: 5,
+        max_results: 8,
         include_answer: false,
         include_raw_content: true,
         include_images: false,
@@ -223,11 +224,11 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
         messages: [
           {
             role: 'system',
-            content: 'You propose a poem attribution candidate for a separate web-search verification step. Use the supplied snippets first; you may use literary knowledge only to propose a candidate, never as final proof. Return JSON only.',
+            content: 'You extract poem attribution only from the supplied web-search results. Never use memory to add facts absent from the results. Return JSON only.',
           },
           {
             role: 'user',
-            content: `待核验诗句：${content}\n搜索片段：${JSON.stringify(sources.map(({ id, title, content: snippet }) => ({ id, title, snippet })))}\n请提出最可能的作者和作品篇名，供后端发起第二次独立搜索验证。优先依据片段；片段署名不完整时可以使用文学知识提出候选，但不要把记忆当作证据。必须引用一个确实包含待核验诗句的 source_id 和原文 evidence。无法提出单一候选或结果冲突时返回 not_found。返回：{"status":"found|not_found","author":"","poem_title":"","source_id":0,"evidence":""}`,
+            content: `待核验诗句：${content}\n搜索片段：${JSON.stringify(sources.map(({ id, title, content: snippet }) => ({ id, title, snippet })))}\n只能从这些搜索结果中提取作者和作品篇名，不得凭记忆补充。必须引用一个确实包含待核验诗句的 source_id 和原文 evidence。作者和篇名必须能在搜索结果集合中找到；无法确定、只有相似句或结果冲突时返回 not_found。返回：{"status":"found|not_found","author":"","poem_title":"","source_id":0,"evidence":""}`,
           },
         ],
         temperature: 0,
@@ -264,12 +265,33 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
   }
 }
 
-function confirmsCandidate(result: SearchResult, content: string, author: string, title: string): boolean {
-  const text = normalize(`${result.title} ${result.content}`);
+function findCandidateEvidence(
+  sources: SearchResult[],
+  content: string,
+  author: string,
+  title: string
+): SearchResult | null {
+  const normalizedAuthor = normalize(author);
   const titleParts = title.split(/[·:：()（）\s]+/).map(normalize).filter((part) => part.length >= 2);
-  return containsPoem(result, content) &&
-    text.includes(normalize(author)) &&
-    titleParts.some((part) => text.includes(part));
+  if (!normalizedAuthor || titleParts.length === 0) return null;
+
+  const evidence = sources.map((source) => {
+    const text = normalize(`${source.title} ${source.content}`);
+    return {
+      source,
+      hasPoem: containsPoem(source, content),
+      hasAuthor: text.includes(normalizedAuthor),
+      hasTitle: titleParts.some((part) => text.includes(part)),
+    };
+  });
+  const jointEvidence = evidence.find((item) => item.hasPoem && item.hasAuthor && item.hasTitle);
+  if (jointEvidence) return jointEvidence.source;
+
+  const poemAuthorEvidence = evidence.find((item) => item.hasPoem && item.hasAuthor);
+  const poemTitleEvidence = evidence.find((item) => item.hasPoem && item.hasTitle);
+  return poemAuthorEvidence && poemTitleEvidence
+    ? poemTitleEvidence.source
+    : null;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -293,13 +315,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const searchableFragment = getSearchablePoemFragment(content);
     const discoveryQuery = isMostlyChinese(content)
-      ? `"${content}" 作者 作品`
-      : `"${content}" poem author title`;
+      ? `"${searchableFragment}" 作者`
+      : `"${searchableFragment}" author`;
     const searchResults = await tavilySearch(discoveryQuery, content);
-    const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 3);
+    const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 5);
     if (matchingSources.length === 0) {
-      attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + 60 * 60 * 1000 });
+      attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
       return res.status(200).json({ attribution: null, verification_status: 'no_matching_source' });
     }
 
@@ -315,31 +338,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       method: 'ai_fallback' as const,
     } : null;
     if (!candidate) {
-      attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + 60 * 60 * 1000 });
+      attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
       return res.status(200).json({ attribution: null, verification_status: 'no_attribution_candidate' });
     }
 
-    const confirmationResults = await tavilySearch(
-      `"${getSearchablePoemFragment(content)}" "${candidate.author}" "${candidate.poem_title}"`,
-      content
+    const evidenceSource = findCandidateEvidence(
+      matchingSources,
+      content,
+      candidate.author,
+      candidate.poem_title
     );
-    const confirmation = confirmationResults.find((result) => (
-      confirmsCandidate(result, content, candidate.author, candidate.poem_title)
-    ));
 
-    const attribution: Attribution | null = confirmation ? {
+    const attribution: Attribution | null = evidenceSource ? {
         author: candidate.author,
         poem_title: candidate.poem_title,
-        source_url: confirmation.url,
+        source_url: evidenceSource.url,
         method: candidate.method,
       } : null;
     attributionCache.set(cacheKey, {
       attribution,
-      expiresAt: Date.now() + (attribution ? CACHE_TTL_MS : 60 * 60 * 1000),
+      expiresAt: Date.now() + (attribution ? CACHE_TTL_MS : NOT_FOUND_CACHE_TTL_MS),
     });
     return res.status(200).json({
       attribution,
-      verification_status: attribution ? 'verified' : 'candidate_not_confirmed',
+      verification_status: attribution ? 'verified' : 'candidate_not_supported',
     });
   } catch (error) {
     console.error('Poem verification failed:', error);

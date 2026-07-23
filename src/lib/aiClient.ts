@@ -11,7 +11,7 @@ export interface PoemAttribution {
 
 const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v1';
 const VERIFIED_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const NOT_FOUND_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const NOT_FOUND_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type AttributionCacheEntry = {
   attribution: PoemAttribution | null;
@@ -112,13 +112,24 @@ export async function verifyPoemAttribution(content: string): Promise<PoemAttrib
     });
 
     if (!response.ok) return null;
-    const data = await response.json() as { attribution?: PoemAttribution | null };
-    const attribution = data.attribution || null;
-    cache[cacheKey] = {
-      attribution,
-      expiresAt: Date.now() + (attribution ? VERIFIED_CACHE_TTL_MS : NOT_FOUND_CACHE_TTL_MS),
+    const data = await response.json() as {
+      attribution?: PoemAttribution | null;
+      verification_status?: string;
     };
-    writeAttributionCache(cache);
+    const attribution = data.attribution || null;
+    const shouldCacheMiss = [
+      'no_matching_source',
+      'no_attribution_candidate',
+      'candidate_not_supported',
+      'not_found_cache',
+    ].includes(data.verification_status || '');
+    if (attribution || shouldCacheMiss) {
+      cache[cacheKey] = {
+        attribution,
+        expiresAt: Date.now() + (attribution ? VERIFIED_CACHE_TTL_MS : NOT_FOUND_CACHE_TTL_MS),
+      };
+      writeAttributionCache(cache);
+    }
     return attribution;
   } catch (error) {
     console.warn('诗句出处核验失败，本次仅展示诗句：', error);
