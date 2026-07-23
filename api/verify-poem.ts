@@ -53,6 +53,14 @@ function poemFragments(content: string): string[] {
   return [...new Set([normalize(content), ...fragments])].filter(Boolean);
 }
 
+function getSearchablePoemFragment(content: string): string {
+  return content
+    .split(/[\n/／\\|，。、；！？,.!?;:：]+/)
+    .map((part) => part.trim())
+    .filter((part) => normalize(part).length >= 5)
+    .sort((a, b) => normalize(b).length - normalize(a).length)[0] || content;
+}
+
 function extractRelevantSnippet(rawContent: string, poemContent: string, fallback: string): string {
   if (!rawContent) return fallback.slice(0, MAX_SNIPPET_LENGTH);
 
@@ -312,7 +320,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const confirmationResults = await tavilySearch(
-      `"${content}" "${candidate.author}" "${candidate.poem_title}"`,
+      `"${getSearchablePoemFragment(content)}" "${candidate.author}" "${candidate.poem_title}"`,
       content
     );
     const confirmation = confirmationResults.find((result) => (
