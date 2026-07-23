@@ -36,6 +36,53 @@ const RETRYABLE_ERROR_COOLDOWN_MS = 60 * 60 * 1000;
 const VERIFICATION_VERSION = 'ai_evidence_v1';
 const attributionCache = new Map<string, { attribution: Attribution | null; expiresAt: number }>();
 const rateWindows = new Map<string, { count: number; resetAt: number }>();
+let tavilyQuotaBlockedUntil = 0;
+let tavilyUsageCheckedAt = 0;
+
+class TavilyApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly responseBody: string,
+    public readonly retryAfterSeconds: number | null
+  ) {
+    super(`Tavily API Error: ${status}`);
+  }
+}
+
+function getNextMonthStart(): number {
+  const now = new Date();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+}
+
+function isTavilyQuotaBlocked(): boolean {
+  return tavilyQuotaBlockedUntil > Date.now();
+}
+
+async function refreshTavilyQuotaStatus(): Promise<void> {
+  if (isTavilyQuotaBlocked() || Date.now() - tavilyUsageCheckedAt < 10 * 60 * 1000) return;
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) return;
+  tavilyUsageCheckedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetch('https://api.tavily.com/usage', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    if (!response.ok) return;
+    const data = await response.json() as { key?: { usage?: unknown; limit?: unknown } };
+    const usage = Number(data.key?.usage);
+    const limit = Number(data.key?.limit);
+    if (Number.isFinite(usage) && Number.isFinite(limit) && limit > 0 && usage >= limit) {
+      tavilyQuotaBlockedUntil = getNextMonthStart();
+    }
+  } catch {
+    // A failed usage check must not be confused with exhausted search credits.
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function normalize(value: string): string {
   return value
@@ -241,7 +288,15 @@ async function tavilySearch(query: string, poemContent: string): Promise<SearchR
     });
 
     if (!response.ok) {
-      throw new Error(`Tavily API Error: ${response.status}`);
+      const responseBody = await response.text();
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfterSeconds = retryAfterHeader && Number.isFinite(Number(retryAfterHeader))
+        ? Number(retryAfterHeader)
+        : null;
+      if (response.status === 432 || response.status === 433) {
+        tavilyQuotaBlockedUntil = getNextMonthStart();
+      }
+      throw new TavilyApiError(response.status, responseBody, retryAfterSeconds);
     }
 
     const data = await response.json() as {
@@ -480,6 +535,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await persistVerification(content, 'retryable_error', 'missing_tavily_key');
     return res.status(200).json({ attribution: null, verification_status: 'missing_tavily_key' });
   }
+  await refreshTavilyQuotaStatus();
+  if (isTavilyQuotaBlocked()) {
+    await persistVerification(content, 'retryable_error', 'tavily_quota_exhausted');
+    return res.status(200).json({ attribution: null, verification_status: 'search_quota_exhausted' });
+  }
   if (isRateLimited(req)) return res.status(429).json({ error: 'Too many requests' });
 
   try {
@@ -546,6 +606,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error) {
     console.error('Poem verification failed:', error);
+    if (error instanceof TavilyApiError && (error.status === 432 || error.status === 433)) {
+      await persistVerification(content, 'retryable_error', `tavily_quota_${error.status}`);
+      return res.status(200).json({ attribution: null, verification_status: 'search_quota_exhausted' });
+    }
     await persistVerification(content, 'retryable_error', 'verification_error');
     return res.status(200).json({ attribution: null, verification_status: 'verification_error' });
   }
