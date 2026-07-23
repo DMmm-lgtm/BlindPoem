@@ -3994,15 +3994,9 @@ function App() {
               </div>
             </a>
             {poemData.author && poemData.poem_title && (
-              <a
-                href={poemData.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="poem-attribution"
-                title="查看出处"
-              >
+              <div className="poem-attribution">
                 ——{poemData.author}《{poemData.poem_title}》
-              </a>
+              </div>
             )}
             
             {/* 按钮区域 */}

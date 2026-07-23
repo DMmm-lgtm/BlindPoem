@@ -85,13 +85,6 @@
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.9rem;
   text-align: right;
-  text-decoration: none;
-  transition: color 160ms ease;
-}
-
-.poem-attribution:hover,
-.poem-attribution:focus-visible {
-  color: rgba(255, 215, 0, 0.9);
 }
 
 .poem-content-search:focus-visible {
