@@ -239,12 +239,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const content = String(req.body?.content || '').trim();
   if (!content) return res.status(400).json({ error: 'Missing poem content' });
   if (content.length > 160) return res.status(400).json({ error: 'Poem content is too long' });
-  if (!process.env.TAVILY_API_KEY) return res.status(200).json({ attribution: null });
+  if (!process.env.TAVILY_API_KEY) {
+    return res.status(200).json({ attribution: null, verification_status: 'missing_tavily_key' });
+  }
 
   const cacheKey = normalize(content);
   const cached = attributionCache.get(cacheKey);
   if (cached?.expiresAt && cached.expiresAt > Date.now()) {
-    return res.status(200).json({ attribution: cached.attribution });
+    return res.status(200).json({
+      attribution: cached.attribution,
+      verification_status: cached.attribution ? 'verified_cache' : 'not_found_cache',
+    });
   }
 
   try {
@@ -252,7 +257,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 3);
     if (matchingSources.length === 0) {
       attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + 60 * 60 * 1000 });
-      return res.status(200).json({ attribution: null });
+      return res.status(200).json({ attribution: null, verification_status: 'no_matching_source' });
     }
 
     const ruleAttribution = extractWithRules(matchingSources);
@@ -268,7 +273,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } : null;
     if (!candidate) {
       attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + 60 * 60 * 1000 });
-      return res.status(200).json({ attribution: null });
+      return res.status(200).json({ attribution: null, verification_status: 'no_attribution_candidate' });
     }
 
     const confirmationResults = await tavilySearch(
@@ -288,9 +293,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       attribution,
       expiresAt: Date.now() + (attribution ? CACHE_TTL_MS : 60 * 60 * 1000),
     });
-    return res.status(200).json({ attribution });
+    return res.status(200).json({
+      attribution,
+      verification_status: attribution ? 'verified' : 'candidate_not_confirmed',
+    });
   } catch (error) {
     console.error('Poem verification failed:', error);
-    return res.status(200).json({ attribution: null });
+    return res.status(200).json({ attribution: null, verification_status: 'verification_error' });
   }
 }
