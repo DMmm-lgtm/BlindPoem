@@ -3996,14 +3996,14 @@ function App() {
             {/* 底部信息栏始终占位，避免异步补充出处时诗句框跳动 */}
             <div
               className="poem-footer-row"
-              style={{ height: isSmallMobile ? '2.25rem' : '2.75rem' }}
+              style={{ minHeight: isSmallMobile ? '3.25rem' : '3rem' }}
             >
               {/* 爱心按钮区域 - 固定占位，避免提示出现时撑大诗句框 */}
               <div
                 className="relative poem-love-slot"
                 style={{
                   width: isSmallMobile ? '8.75rem' : '10.75rem',
-                  height: '100%',
+                  height: isSmallMobile ? '2.25rem' : '2.75rem',
                 }}
               >
                 {showLoveButton && (

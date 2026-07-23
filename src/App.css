@@ -83,10 +83,10 @@
   min-width: 0;
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.9rem;
+  line-height: 1.45;
   text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .poem-footer-row {
