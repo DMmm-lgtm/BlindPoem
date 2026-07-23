@@ -47,8 +47,16 @@ function getSupabaseAdminConfig(): { url: string; key: string } | null {
   const url = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '')
     .replace(/\/rest\/v1\/?$/, '')
     .replace(/\/$/, '');
-  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+  const key = String(
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+  );
   return url && key ? { url, key } : null;
+}
+
+function getSupabaseAdminHeaders(key: string): Record<string, string> {
+  return key.startsWith('sb_secret_')
+    ? { apikey: key }
+    : { apikey: key, Authorization: `Bearer ${key}` };
 }
 
 async function getStoredPoem(contentKey: string): Promise<StoredPoem | null> {
@@ -61,7 +69,7 @@ async function getStoredPoem(contentKey: string): Promise<StoredPoem | null> {
   });
   try {
     const response = await fetch(`${config.url}/rest/v1/poems?${query}`, {
-      headers: { apikey: config.key, Authorization: `Bearer ${config.key}` },
+      headers: getSupabaseAdminHeaders(config.key),
     });
     if (!response.ok) {
       console.warn('Supabase attribution lookup failed:', response.status);
@@ -101,8 +109,7 @@ async function persistVerification(
     const updateResponse = await fetch(`${config.url}/rest/v1/poems?${updateQuery}`, {
       method: 'PATCH',
       headers: {
-        apikey: config.key,
-        Authorization: `Bearer ${config.key}`,
+        ...getSupabaseAdminHeaders(config.key),
         'Content-Type': 'application/json',
         Prefer: 'return=representation',
       },
@@ -118,8 +125,7 @@ async function persistVerification(
     const insertResponse = await fetch(`${config.url}/rest/v1/poems`, {
       method: 'POST',
       headers: {
-        apikey: config.key,
-        Authorization: `Bearer ${config.key}`,
+        ...getSupabaseAdminHeaders(config.key),
         'Content-Type': 'application/json',
         Prefer: 'return=minimal',
       },

@@ -11,10 +11,11 @@ Vercel 服务端环境变量：
 ```text
 TAVILY_API_KEY=tvly-...
 SUPABASE_URL=https://你的项目.supabase.co
+SUPABASE_SECRET_KEY=你的_sb_secret_服务端密钥
 SUPABASE_SERVICE_ROLE_KEY=你的_service_role_key
 ```
 
-这些密钥只配置在 Vercel 服务端。`SUPABASE_SERVICE_ROLE_KEY` 不能使用 `VITE_` 前缀，也不能出现在浏览器代码中。浏览器会缓存已核验及数据库已确认未找到的结果 30 天，数据库记录是最终依据。
+已有 `VITE_SUPABASE_URL` 时可以不再添加 `SUPABASE_URL`。服务端密钥优先使用 Supabase 当前推荐的 `SUPABASE_SECRET_KEY`（值以 `sb_secret_` 开头）；旧项目也兼容 `SUPABASE_SERVICE_ROLE_KEY`，二者只需配置一个。服务端密钥不能使用 `VITE_` 前缀，也不能出现在浏览器代码中。浏览器会缓存已核验及数据库已确认未找到的结果 30 天，数据库记录是最终依据。
 
 首次上线前，在 Supabase SQL Editor 中执行 [`supabase/attribution-verification-migration.sql`](supabase/attribution-verification-migration.sql)。迁移会保留旧诗句、点赞、心情和时间，只清空旧作者与篇名并标记为 `pending`，之后在诗句实际出现时逐步核验。
 
