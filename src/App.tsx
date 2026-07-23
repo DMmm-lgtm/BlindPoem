@@ -3993,21 +3993,17 @@ function App() {
                 ))}
               </div>
             </a>
-            {poemData.author && poemData.poem_title && (
-              <div className="poem-attribution">
-                ——{poemData.author}《{poemData.poem_title}》
-              </div>
-            )}
-            
-            {/* 按钮区域 */}
-            <div className="mt-4 flex items-center justify-end">
+            {/* 底部信息栏始终占位，避免异步补充出处时诗句框跳动 */}
+            <div
+              className="poem-footer-row"
+              style={{ height: isSmallMobile ? '2.25rem' : '2.75rem' }}
+            >
               {/* 爱心按钮区域 - 固定占位，避免提示出现时撑大诗句框 */}
               <div
-                className="relative"
+                className="relative poem-love-slot"
                 style={{
                   width: isSmallMobile ? '8.75rem' : '10.75rem',
-                  height: isSmallMobile ? '2.25rem' : '2.75rem',
-                  flex: '0 0 auto',
+                  height: '100%',
                 }}
               >
                 {showLoveButton && (
@@ -4053,6 +4049,12 @@ function App() {
                   </span>
                   </div>
                 )}
+              </div>
+
+              <div className="poem-attribution">
+                {poemData.author && poemData.poem_title
+                  ? `——${poemData.author}《${poemData.poem_title}》`
+                  : ''}
               </div>
             </div>
           </div>

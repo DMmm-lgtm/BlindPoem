@@ -80,11 +80,24 @@
 }
 
 .poem-attribution {
-  display: block;
-  width: 100%;
+  min-width: 0;
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.9rem;
   text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poem-footer-row {
+  display: grid;
+  grid-template-columns: minmax(8.75rem, 1fr) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.75rem;
+}
+
+.poem-love-slot {
+  justify-self: center;
 }
 
 .poem-content-search:focus-visible {
