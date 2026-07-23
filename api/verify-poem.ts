@@ -273,10 +273,20 @@ function cleanCandidate(value: string): string {
 }
 
 function isPlausibleAuthor(author: string): boolean {
-  const invalid = /^(?:字词|译文|注释|赏析|原文|作者|诗人|词人|作品|古诗|诗词|佚名|匿名|未知)$/i;
+  const invalid = /^(?:字词|字词网|词典|译文|注释|赏析|原文|作者|诗人|词人|作品|古诗|诗词|首页|佚名|匿名|未知)$/i;
   if (!author || invalid.test(author)) return false;
   if (/^[\p{Script=Han}]+$/u.test(author) && author.length > 6) return false;
   return author.length <= 40;
+}
+
+function sanitizeEvidenceTitle(title: string): string {
+  const genericLabel = /^(?:作者|字词|字词网|词典|译文|注释|赏析|原文|全文|作品|古诗|诗词|首页)$/i;
+  return title
+    .split(/\s*[|｜_]\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part && !genericLabel.test(part))
+    .join(' | ')
+    .slice(0, 100);
 }
 
 function isPlausibleTitle(title: string): boolean {
@@ -320,7 +330,7 @@ function compactEvidenceSources(sources: SearchResult[], poemContent: string): S
         : `${prefix} … ${localExcerpt}`;
       return {
         ...source,
-        title: source.title.slice(0, 100),
+        title: sanitizeEvidenceTitle(source.title),
         content: compactContent.slice(0, 280),
       };
     });
@@ -350,7 +360,7 @@ async function extractWithDeepSeek(content: string, sources: SearchResult[]): Pr
         messages: [
           {
             role: 'system',
-            content: '仅从证据卡提取整段诗句的作者和篇名。部分匹配、冲突、不确定或证据未同时支持作者与篇名时返回n。只返回JSON。',
+            content: '仅从证据卡提取整段诗句的作者和篇名。t是网页标题，可能只是栏目名；严禁把作者、字词、译文、注释、赏析、原文等栏目词当人名。部分匹配、冲突、不确定或证据未同时支持作者与篇名时返回n。只返回JSON。',
           },
           {
             role: 'user',
