@@ -2,7 +2,7 @@
 
 ## 诗句出处核验
 
-AI 生成接口只返回诗句，不直接提供作者和篇名。页面展示诗句后会异步调用 `/api/verify-poem`。后端先按标准化诗句查询 Supabase：`verified` 直接返回署名，`not_found` 直接保持不署名，只有 `pending` 或已过一小时冷却期的 `retryable_error` 才调用一次 Tavily。搜索使用“辨识度最高的单句 + 作者”；后端规则优先提取，规则无法处理时 DeepSeek 只分析同一批搜索片段，最终仍由后端检查原句、作者和篇名之间的证据关系。
+AI 生成接口只返回诗句，不直接提供作者和篇名。页面展示诗句后会异步调用 `/api/verify-poem`。后端先按标准化诗句查询 Supabase：`verified` 直接返回署名，当前规则确认的 `not_found` 直接保持不署名，只有 `pending`、旧规则留下的 `not_found` 或已过一小时冷却期的 `retryable_error` 才调用一次 Tavily。搜索使用“完整诗句 + 作者”；后端规则优先提取，规则无法处理时 DeepSeek 只分析同一批搜索片段，最终仍由后端检查原句、作者和篇名之间的证据关系。
 
 正常完成搜索但没有可信出处会永久记录为 `not_found`；Tavily/DeepSeek 超时、限流、缺少密钥或程序错误只记录为 `retryable_error`，不会被误判成没有作者。核验结果由服务端写回数据库，数据库因此也是跨浏览器、跨 Vercel 实例的持久化核验缓存。
 

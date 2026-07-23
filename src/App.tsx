@@ -3983,14 +3983,23 @@ function App() {
                 ))}
               </div>
             </a>
-            {/* 底部信息栏始终占位，避免异步补充出处时诗句框跳动 */}
+            {/* 出处区域始终占位，避免异步补充出处时诗句框跳动 */}
             <div
-              className="poem-footer-row"
+              className="poem-attribution-row"
               style={{ minHeight: isSmallMobile ? '3.25rem' : '3rem' }}
             >
+              <div className="poem-attribution">
+                {poemData.author && poemData.poem_title
+                  ? `——${poemData.author}《${poemData.poem_title}》`
+                  : ''}
+              </div>
+            </div>
+
+            {/* 收藏区域独立放在右下角 */}
+            <div className="flex items-center justify-end">
               {/* 爱心按钮区域 - 固定占位，避免提示出现时撑大诗句框 */}
               <div
-                className="relative poem-love-slot"
+                className="relative"
                 style={{
                   width: isSmallMobile ? '8.75rem' : '10.75rem',
                   height: isSmallMobile ? '2.25rem' : '2.75rem',
@@ -4039,12 +4048,6 @@ function App() {
                   </span>
                   </div>
                 )}
-              </div>
-
-              <div className="poem-attribution">
-                {poemData.author && poemData.poem_title
-                  ? `——${poemData.author}《${poemData.poem_title}》`
-                  : ''}
               </div>
             </div>
           </div>

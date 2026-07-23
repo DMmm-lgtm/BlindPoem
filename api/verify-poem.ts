@@ -23,6 +23,7 @@ type StoredPoem = {
   poem_title: string | null;
   source_url: string | null;
   attribution_status: VerificationStatus;
+  verification_reason: string | null;
   verification_attempted_at: string | null;
 };
 
@@ -32,6 +33,7 @@ const MAX_SNIPPET_LENGTH = 500;
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_FOUND_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RETRYABLE_ERROR_COOLDOWN_MS = 60 * 60 * 1000;
+const VERIFICATION_VERSION = 'full_excerpt_v1';
 const attributionCache = new Map<string, { attribution: Attribution | null; expiresAt: number }>();
 const rateWindows = new Map<string, { count: number; resetAt: number }>();
 
@@ -63,7 +65,7 @@ async function getStoredPoem(contentKey: string): Promise<StoredPoem | null> {
   const config = getSupabaseAdminConfig();
   if (!config) return null;
   const query = new URLSearchParams({
-    select: 'author,poem_title,source_url,attribution_status,verification_attempted_at',
+    select: 'author,poem_title,source_url,attribution_status,verification_reason,verification_attempted_at',
     content_key: `eq.${contentKey}`,
     limit: '20',
   });
@@ -101,7 +103,7 @@ async function persistVerification(
       author: attribution?.author || null,
       source_url: attribution?.source_url || null,
       attribution_status: status,
-      verification_reason: reason,
+      verification_reason: status === 'not_found' ? `${reason}:${VERIFICATION_VERSION}` : reason,
       verification_attempted_at: now,
       verified_at: status === 'verified' ? now : null,
     };
@@ -159,14 +161,6 @@ function poemFragments(content: string): string[] {
     .sort((a, b) => b.length - a.length);
 
   return [...new Set([normalize(content), ...fragments])].filter(Boolean);
-}
-
-function getSearchablePoemFragment(content: string): string {
-  return content
-    .split(/[\n/／\\|，。、；！？,.!?;:：]+/)
-    .map((part) => part.trim())
-    .filter((part) => normalize(part).length >= 5)
-    .sort((a, b) => normalize(b).length - normalize(a).length)[0] || content;
 }
 
 function extractRelevantSnippet(rawContent: string, poemContent: string, fallback: string): string {
@@ -460,7 +454,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     attributionCache.set(cacheKey, { attribution, expiresAt: Date.now() + CACHE_TTL_MS });
     return res.status(200).json({ attribution, verification_status: 'verified_database' });
   }
-  if (storedPoem?.attribution_status === 'not_found') {
+  if (
+    storedPoem?.attribution_status === 'not_found' &&
+    storedPoem.verification_reason?.endsWith(`:${VERIFICATION_VERSION}`)
+  ) {
     attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
     return res.status(200).json({ attribution: null, verification_status: 'not_found_database' });
   }
@@ -486,10 +483,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (isRateLimited(req)) return res.status(429).json({ error: 'Too many requests' });
 
   try {
-    const searchableFragment = getSearchablePoemFragment(content);
+    const searchableExcerpt = content.replace(/[\n/／\\|]+/g, ' ').replace(/\s+/g, ' ').trim();
     const discoveryQuery = isMostlyChinese(content)
-      ? `"${searchableFragment}" 作者`
-      : `"${searchableFragment}" author`;
+      ? `"${searchableExcerpt}" 作者`
+      : `"${searchableExcerpt}" author`;
     const searchResults = await tavilySearch(discoveryQuery, content);
     const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 5);
     if (matchingSources.length === 0) {
