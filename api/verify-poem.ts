@@ -53,6 +53,27 @@ function poemFragments(content: string): string[] {
   return [...new Set([normalize(content), ...fragments])].filter(Boolean);
 }
 
+function extractRelevantSnippet(rawContent: string, poemContent: string, fallback: string): string {
+  if (!rawContent) return fallback.slice(0, MAX_SNIPPET_LENGTH);
+
+  const normalizedChars: string[] = [];
+  const originalPositions: number[] = [];
+  [...rawContent].forEach((character, index) => {
+    const normalizedCharacter = normalize(character);
+    if (!normalizedCharacter) return;
+    normalizedChars.push(normalizedCharacter);
+    originalPositions.push(index);
+  });
+  const normalizedRaw = normalizedChars.join('');
+  const fragment = poemFragments(poemContent).find((candidate) => normalizedRaw.includes(candidate));
+  if (!fragment) return fallback.slice(0, MAX_SNIPPET_LENGTH);
+
+  const normalizedIndex = normalizedRaw.indexOf(fragment);
+  const originalIndex = originalPositions[normalizedIndex] ?? 0;
+  const start = Math.max(0, originalIndex - 180);
+  return rawContent.slice(start, start + MAX_SNIPPET_LENGTH).trim();
+}
+
 function containsPoem(result: SearchResult, content: string): boolean {
   const haystack = normalize(`${result.title} ${result.content}`);
   const fragments = poemFragments(content);
@@ -61,7 +82,7 @@ function containsPoem(result: SearchResult, content: string): boolean {
   ));
 }
 
-async function tavilySearch(query: string): Promise<SearchResult[]> {
+async function tavilySearch(query: string, poemContent: string): Promise<SearchResult[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) throw new Error('Missing TAVILY_API_KEY');
 
@@ -81,7 +102,7 @@ async function tavilySearch(query: string): Promise<SearchResult[]> {
         search_depth: 'basic',
         max_results: 5,
         include_answer: false,
-        include_raw_content: false,
+        include_raw_content: true,
         include_images: false,
       }),
       signal: controller.signal,
@@ -92,13 +113,17 @@ async function tavilySearch(query: string): Promise<SearchResult[]> {
     }
 
     const data = await response.json() as {
-      results?: Array<{ title?: unknown; content?: unknown; url?: unknown }>;
+      results?: Array<{ title?: unknown; content?: unknown; raw_content?: unknown; url?: unknown }>;
     };
 
     return (data.results || []).map((result, id) => ({
       id,
       title: String(result.title || '').trim(),
-      content: String(result.content || '').trim().slice(0, MAX_SNIPPET_LENGTH),
+      content: extractRelevantSnippet(
+        String(result.raw_content || ''),
+        poemContent,
+        String(result.content || '').trim()
+      ),
       url: String(result.url || '').trim(),
     })).filter((result) => result.title && result.url);
   } finally {
@@ -253,7 +278,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const searchResults = await tavilySearch(`"${content}" poem author title 出自 作者`);
+    const searchResults = await tavilySearch(`"${content}" poem author title 出自 作者`, content);
     const matchingSources = searchResults.filter((result) => containsPoem(result, content)).slice(0, 3);
     if (matchingSources.length === 0) {
       attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + 60 * 60 * 1000 });
@@ -277,7 +302,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const confirmationResults = await tavilySearch(
-      `"${content}" "${candidate.author}" "${candidate.poem_title}"`
+      `"${content}" "${candidate.author}" "${candidate.poem_title}"`,
+      content
     );
     const confirmation = confirmationResults.find((result) => (
       confirmsCandidate(result, content, candidate.author, candidate.poem_title)
