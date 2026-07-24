@@ -6,10 +6,10 @@ export interface PoemAttribution {
   author: string;
   poem_title: string;
   source_url: string;
-  method: 'ai_evidence' | 'database';
+  method: 'ai_cross_verified' | 'database';
 }
 
-const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v4';
+const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v6';
 const VERIFIED_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_FOUND_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -101,7 +101,7 @@ export async function verifyPoemAttribution(content: string): Promise<PoemAttrib
   if (cached?.expiresAt > Date.now()) return cached.attribution;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 22000);
+  const timeoutId = setTimeout(() => controller.abort(), 28000);
 
   try {
     const response = await fetch('/api/verify-poem', {
@@ -120,7 +120,7 @@ export async function verifyPoemAttribution(content: string): Promise<PoemAttrib
     const shouldCacheMiss = [
       'no_matching_source',
       'partial_poem_match',
-      'no_attribution_candidate',
+      'ai_partial_match',
       'candidate_not_supported',
       'not_found_cache',
       'not_found_database',
