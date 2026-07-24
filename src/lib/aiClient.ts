@@ -9,7 +9,7 @@ export interface PoemAttribution {
   method: 'ai_cross_verified' | 'database';
 }
 
-const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v7';
+const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v8';
 const VERIFIED_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_FOUND_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
