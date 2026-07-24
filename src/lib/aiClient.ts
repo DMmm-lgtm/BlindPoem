@@ -9,7 +9,7 @@ export interface PoemAttribution {
   method: 'ai_cross_verified' | 'database';
 }
 
-const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v8';
+const ATTRIBUTION_CACHE_KEY = 'blindpoem.attributionCache.v9';
 const VERIFIED_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_FOUND_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -126,7 +126,6 @@ export async function verifyPoemAttribution(
     const shouldCacheMiss = [
       'no_matching_source',
       'partial_poem_match',
-      'ai_partial_match',
       'candidate_not_supported',
       'not_found_cache',
       'not_found_database',

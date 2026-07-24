@@ -37,7 +37,7 @@ const RETRYABLE_ERROR_COOLDOWN_MS = 60 * 60 * 1000;
 const SEARCH_TRANSIENT_COOLDOWN_MS = 5 * 60 * 1000;
 const SEARCH_RATE_LIMIT_COOLDOWN_MS = 10 * 60 * 1000;
 const AI_REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const VERIFICATION_VERSION = 'ai_cross_search_v5';
+const VERIFICATION_VERSION = 'ai_cross_search_v6';
 const attributionCache = new Map<string, { attribution: Attribution | null; expiresAt: number }>();
 const rateWindows = new Map<string, { count: number; resetAt: number }>();
 let tavilyQuotaBlockedUntil = 0;
@@ -377,29 +377,12 @@ function isPlausibleTitle(title: string): boolean {
   return Boolean(title) && !invalid.test(title) && title.length <= 80;
 }
 
-function cleanAliases(
-  value: unknown,
-  primary: string,
-  validator: (candidate: string) => boolean
-): string[] {
-  const candidates = Array.isArray(value) ? value : [];
-  const aliases = [primary, ...candidates]
-    .map((candidate) => cleanCandidate(String(candidate || '')))
-    .filter((candidate) => validator(candidate) && normalize(candidate).length >= 2);
-
-  return aliases.filter((candidate, index) => (
-    aliases.findIndex((item) => normalize(item) === normalize(candidate)) === index
-  )).slice(0, 5);
-}
-
 type CandidateResult =
   | { status: 'found'; author: string; poem_title: string }
-  | { status: 'unknown' }
   | { status: 'retryable_error'; reason: string };
 
 type ReviewResult =
-  | { status: 'exact'; author_aliases: string[]; title_aliases: string[] }
-  | { status: 'partial' | 'incorrect' | 'uncertain' }
+  | { status: 'confirmed' | 'rejected' }
   | { status: 'retryable_error'; reason: string };
 
 type DeepSeekCallResult =
@@ -409,7 +392,6 @@ type DeepSeekCallResult =
 async function callDeepSeek(
   system: string,
   user: string,
-  maxTokens: number,
   signal?: AbortSignal
 ): Promise<DeepSeekCallResult> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -438,7 +420,6 @@ async function callDeepSeek(
           { role: 'user', content: user },
         ],
         temperature: 0,
-        max_tokens: maxTokens,
         response_format: { type: 'json_object' },
         thinking: { type: 'disabled' },
         stream: false,
@@ -474,17 +455,14 @@ async function callDeepSeek(
 
 async function identifyCandidate(content: string, signal?: AbortSignal): Promise<CandidateResult> {
   const result = await callDeepSeek(
-    '判断整段诗句的真实作者和篇名。不得只凭其中一个名句推断；疑似拼接、改写、生成文本或不确定时返回u。英文诗句的作者和篇名必须用规范英文原名，中文诗句使用常用中文名。只返回JSON。',
-    `lang=${isMostlyLatin(content) ? 'en' : 'other'}\nq=${JSON.stringify(content)}\n返回：{"s":"f|u","a":"作者","t":"篇名"}`,
-    80,
+    '回答诗句的作者和篇名，英文诗句使用英文原名，并仅返回JSON：{"a":"作者","t":"篇名"}。',
+    `这句诗来自哪位作者的哪篇作品：${JSON.stringify(content)}？`,
     signal
   );
   if (result.status === 'error') {
     return { status: 'retryable_error', reason: `ai_candidate_${result.reason}` };
   }
   const parsed = result.data;
-  if (parsed.s === 'u') return { status: 'unknown' };
-  if (parsed.s !== 'f') return { status: 'retryable_error', reason: 'ai_candidate_format_error' };
 
   const author = cleanCandidate(String(parsed.a || ''));
   const poemTitle = cleanCandidate(String(parsed.t || ''));
@@ -500,43 +478,36 @@ async function reviewCandidate(
   signal?: AbortSignal
 ): Promise<ReviewResult> {
   const result = await callDeepSeek(
-    '核查整段诗句的出处声明，优先找错。中英文作者名、译名和作品译名语义等价时视为相符，不因语言不同拒绝。整段精确属于该作品才返回e，并给出最多4个可靠的中英文作者别名aa和篇名别名ta；仅部分属于返回p；作者或篇名错误返回i；无把握返回u。不要顺从声明。只返回JSON。',
-    `a=${JSON.stringify(author)}\nt=${JSON.stringify(poemTitle)}\nq=${JSON.stringify(content)}\n返回：{"s":"e|p|i|u","aa":[],"ta":[]}`,
-    100,
+    '判断指定作品中是否存在给出的诗句，并仅返回JSON：{"exists":true}或{"exists":false}。',
+    `${JSON.stringify(author)}的《${poemTitle}》中是否存在诗句${JSON.stringify(content)}？`,
     signal
   );
   if (result.status === 'error') {
     return { status: 'retryable_error', reason: `ai_review_${result.reason}` };
   }
   const parsed = result.data;
-  if (parsed.s === 'e') {
-    const authorAliases = cleanAliases(parsed.aa, author, isPlausibleAuthor);
-    const titleAliases = cleanAliases(parsed.ta, poemTitle, isPlausibleTitle);
-    return { status: 'exact', author_aliases: authorAliases, title_aliases: titleAliases };
-  }
-  if (parsed.s === 'p') return { status: 'partial' };
-  if (parsed.s === 'i') return { status: 'incorrect' };
-  if (parsed.s === 'u') return { status: 'uncertain' };
+  if (parsed.exists === true) return { status: 'confirmed' };
+  if (parsed.exists === false) return { status: 'rejected' };
   return { status: 'retryable_error', reason: 'ai_review_format_error' };
 }
 
 function findCandidateEvidence(
   sources: SearchResult[],
   content: string,
-  authorAliases: string[],
-  titleAliases: string[]
+  author: string,
+  title: string
 ): SearchResult | null {
-  const normalizedAuthors = authorAliases.map(normalize).filter(Boolean);
-  const normalizedTitles = titleAliases.map(normalize).filter(Boolean);
-  if (normalizedAuthors.length === 0 || normalizedTitles.length === 0) return null;
+  const normalizedAuthor = normalize(author);
+  const normalizedTitle = normalize(title);
+  if (!normalizedAuthor || !normalizedTitle) return null;
 
   const evidence = sources.map((source) => {
     const text = normalize(searchResultTexts(source).join(' '));
     return {
       source,
       hasPoem: containsPoem(source, content),
-      hasAuthor: normalizedAuthors.some((author) => text.includes(author)),
-      hasTitle: normalizedTitles.some((title) => text.includes(title)),
+      hasAuthor: text.includes(normalizedAuthor),
+      hasTitle: text.includes(normalizedTitle),
     };
   });
   const jointEvidence = evidence.find((item) => item.hasPoem && item.hasAuthor && item.hasTitle);
@@ -544,10 +515,10 @@ function findCandidateEvidence(
 }
 
 function getRetryCooldownMs(reason: string | null): number {
-  if (/^(?:ai_unknown|ai_candidate_rejected|ai_review_uncertain)$/.test(reason || '')) {
+  if (/^ai_candidate_rejected$/.test(reason || '')) {
     return AI_REJECTION_COOLDOWN_MS;
   }
-  if (/^(?:verification_error|ai_(?:candidate|review)_error|ai_(?:candidate|review)_(?:timeout|network_error|http_5\d\d)|tavily_timeout_|tavily_http_5\d\d)/.test(reason || '')) {
+  if (/^(?:verification_error|ai_(?:candidate|review)_(?:timeout|network_error|http_5\d\d)|tavily_timeout_|tavily_http_5\d\d)/.test(reason || '')) {
     return SEARCH_TRANSIENT_COOLDOWN_MS;
   }
   if (/^(?:ai_(?:candidate|review)_(?:http_429|invalid_response|empty_response|invalid_json)|tavily_http_429|tavily_invalid_response)$/.test(reason || '')) {
@@ -622,11 +593,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await persistVerification(content, 'retryable_error', candidate.reason);
       return res.status(200).json({ attribution: null, verification_status: candidate.reason });
     }
-    if (candidate.status === 'unknown') {
-      await persistVerification(content, 'retryable_error', 'ai_unknown');
-      return res.status(200).json({ attribution: null, verification_status: 'ai_unknown' });
-    }
-
     const review = await reviewCandidate(
       content,
       candidate.author,
@@ -638,18 +604,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await persistVerification(content, 'retryable_error', review.reason);
       return res.status(200).json({ attribution: null, verification_status: review.reason });
     }
-    if (review.status === 'partial') {
-      attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
-      await persistVerification(content, 'not_found', 'ai_partial_match');
-      return res.status(200).json({ attribution: null, verification_status: 'ai_partial_match' });
-    }
-    if (review.status === 'incorrect') {
+    if (review.status === 'rejected') {
       await persistVerification(content, 'retryable_error', 'ai_candidate_rejected');
       return res.status(200).json({ attribution: null, verification_status: 'ai_candidate_rejected' });
-    }
-    if (review.status === 'uncertain') {
-      await persistVerification(content, 'retryable_error', 'ai_review_uncertain');
-      return res.status(200).json({ attribution: null, verification_status: 'ai_review_uncertain' });
     }
 
     if (!process.env.TAVILY_API_KEY) {
@@ -673,8 +630,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let evidenceSource = findCandidateEvidence(
       searchResults.filter((result) => containsPoem(result, content)),
       content,
-      review.author_aliases,
-      review.title_aliases
+      candidate.author,
+      candidate.poem_title
     );
 
     // Most well-known poems are fully supported by Tavily's title and summary.
@@ -689,8 +646,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       evidenceSource = findCandidateEvidence(
         searchResults.filter((result) => containsPoem(result, content)),
         content,
-        review.author_aliases,
-        review.title_aliases
+        candidate.author,
+        candidate.poem_title
       );
     }
 
