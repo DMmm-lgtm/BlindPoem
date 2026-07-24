@@ -28,13 +28,16 @@ type StoredPoem = {
   verification_attempted_at: string | null;
 };
 
-const SEARCH_TIMEOUT_MS = 6000;
+const FAST_SEARCH_TIMEOUT_MS = 6000;
+const RAW_SEARCH_TIMEOUT_MS = 9000;
 const AI_TIMEOUT_MS = 6000;
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_FOUND_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RETRYABLE_ERROR_COOLDOWN_MS = 60 * 60 * 1000;
+const SEARCH_TRANSIENT_COOLDOWN_MS = 5 * 60 * 1000;
+const SEARCH_RATE_LIMIT_COOLDOWN_MS = 10 * 60 * 1000;
 const AI_REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const VERIFICATION_VERSION = 'ai_cross_search_v3';
+const VERIFICATION_VERSION = 'ai_cross_search_v4';
 const attributionCache = new Map<string, { attribution: Attribution | null; expiresAt: number }>();
 const rateWindows = new Map<string, { count: number; resetAt: number }>();
 let tavilyQuotaBlockedUntil = 0;
@@ -47,6 +50,18 @@ class TavilyApiError extends Error {
     public readonly retryAfterSeconds: number | null
   ) {
     super(`Tavily API Error: ${status}`);
+  }
+}
+
+class TavilyTimeoutError extends Error {
+  constructor(public readonly phase: 'summary' | 'raw') {
+    super(`Tavily ${phase} search timed out`);
+  }
+}
+
+class TavilyInvalidResponseError extends Error {
+  constructor() {
+    super('Tavily returned an invalid response');
   }
 }
 
@@ -263,14 +278,22 @@ function containsPartialPoem(result: SearchResult, content: string): boolean {
   return fragments.some((fragment) => haystacks.some((text) => text.includes(fragment)));
 }
 
-async function tavilySearch(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
+async function tavilySearch(
+  query: string,
+  includeRawContent: boolean,
+  signal?: AbortSignal
+): Promise<SearchResult[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) throw new Error('Missing TAVILY_API_KEY');
 
   const controller = new AbortController();
+  let didTimeout = false;
   const abortFromCaller = () => controller.abort();
   signal?.addEventListener('abort', abortFromCaller, { once: true });
-  const timeout = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, includeRawContent ? RAW_SEARCH_TIMEOUT_MS : FAST_SEARCH_TIMEOUT_MS);
 
   try {
     const response = await fetch('https://api.tavily.com/search', {
@@ -285,7 +308,7 @@ async function tavilySearch(query: string, signal?: AbortSignal): Promise<Search
         search_depth: 'basic',
         max_results: 5,
         include_answer: false,
-        include_raw_content: true,
+        include_raw_content: includeRawContent,
         include_images: false,
       }),
       signal: controller.signal,
@@ -303,9 +326,17 @@ async function tavilySearch(query: string, signal?: AbortSignal): Promise<Search
       throw new TavilyApiError(response.status, responseBody, retryAfterSeconds);
     }
 
-    const data = await response.json() as {
+    let data: {
       results?: Array<{ title?: unknown; content?: unknown; raw_content?: unknown; url?: unknown }>;
     };
+    try {
+      data = await response.json() as typeof data;
+    } catch {
+      throw new TavilyInvalidResponseError();
+    }
+    if (data.results !== undefined && !Array.isArray(data.results)) {
+      throw new TavilyInvalidResponseError();
+    }
 
     return (data.results || []).map((result, id) => ({
       id,
@@ -314,6 +345,11 @@ async function tavilySearch(query: string, signal?: AbortSignal): Promise<Search
       rawContent: String(result.raw_content || '').trim(),
       url: String(result.url || '').trim(),
     })).filter((result) => result.title && result.url);
+  } catch (error) {
+    if (didTimeout && !signal?.aborted) {
+      throw new TavilyTimeoutError(includeRawContent ? 'raw' : 'summary');
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener('abort', abortFromCaller);
@@ -460,9 +496,16 @@ function findCandidateEvidence(
 }
 
 function getRetryCooldownMs(reason: string | null): number {
-  return /^(?:ai_unknown|ai_candidate_rejected|ai_review_uncertain)$/.test(reason || '')
-    ? AI_REJECTION_COOLDOWN_MS
-    : RETRYABLE_ERROR_COOLDOWN_MS;
+  if (/^(?:ai_unknown|ai_candidate_rejected|ai_review_uncertain)$/.test(reason || '')) {
+    return AI_REJECTION_COOLDOWN_MS;
+  }
+  if (/^(?:verification_error|tavily_timeout_|tavily_http_5\d\d)/.test(reason || '')) {
+    return SEARCH_TRANSIENT_COOLDOWN_MS;
+  }
+  if (/^(?:tavily_http_429|tavily_invalid_response)$/.test(reason || '')) {
+    return SEARCH_RATE_LIMIT_COOLDOWN_MS;
+  }
+  return RETRYABLE_ERROR_COOLDOWN_MS;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -573,51 +616,79 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const searchableExcerpt = content.replace(/[\n/／\\|]+/g, ' ').replace(/\s+/g, ' ').trim();
     const verificationQuery = `"${searchableExcerpt}" "${candidate.author}" "${candidate.poem_title}"`;
-    const searchResults = await tavilySearch(verificationQuery, clientConnection.signal);
+    let searchResults = await tavilySearch(
+      verificationQuery,
+      false,
+      clientConnection.signal
+    );
     if (clientConnection.signal.aborted) return;
-    const matchingSources = searchResults.filter((result) => containsPoem(result, content));
-    if (matchingSources.length === 0) {
-      const reason = searchResults.some((result) => containsPartialPoem(result, content))
-        ? 'partial_poem_match'
-        : 'no_matching_source';
-      attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
-      await persistVerification(content, 'not_found', reason);
-      return res.status(200).json({ attribution: null, verification_status: reason });
-    }
-
-    const evidenceSource = findCandidateEvidence(
-      matchingSources,
+    let evidenceSource = findCandidateEvidence(
+      searchResults.filter((result) => containsPoem(result, content)),
       content,
       candidate.author,
       candidate.poem_title
     );
 
-    const attribution: Attribution | null = evidenceSource ? {
+    // Most well-known poems are fully supported by Tavily's title and summary.
+    // Fetch full page text only when that lightweight evidence is insufficient.
+    if (!evidenceSource) {
+      searchResults = await tavilySearch(
+        verificationQuery,
+        true,
+        clientConnection.signal
+      );
+      if (clientConnection.signal.aborted) return;
+      evidenceSource = findCandidateEvidence(
+        searchResults.filter((result) => containsPoem(result, content)),
+        content,
+        candidate.author,
+        candidate.poem_title
+      );
+    }
+
+    if (!evidenceSource) {
+      const reason = searchResults.some((result) => containsPartialPoem(result, content))
+        ? 'partial_poem_match'
+        : searchResults.some((result) => containsPoem(result, content))
+          ? 'candidate_not_supported'
+          : 'no_matching_source';
+      attributionCache.set(cacheKey, { attribution: null, expiresAt: Date.now() + NOT_FOUND_CACHE_TTL_MS });
+      await persistVerification(content, 'not_found', reason);
+      return res.status(200).json({ attribution: null, verification_status: reason });
+    }
+
+    const attribution: Attribution = {
         author: candidate.author,
         poem_title: candidate.poem_title,
         source_url: evidenceSource.url,
         method: 'ai_cross_verified',
-      } : null;
-    attributionCache.set(cacheKey, {
-      attribution,
-      expiresAt: Date.now() + (attribution ? CACHE_TTL_MS : NOT_FOUND_CACHE_TTL_MS),
-    });
-    await persistVerification(
-      content,
-      attribution ? 'verified' : 'not_found',
-      attribution ? 'verified_ai_cross_search' : 'candidate_not_supported',
-      attribution
-    );
+      };
+    attributionCache.set(cacheKey, { attribution, expiresAt: Date.now() + CACHE_TTL_MS });
+    await persistVerification(content, 'verified', 'verified_ai_cross_search', attribution);
     return res.status(200).json({
       attribution,
-      verification_status: attribution ? 'verified' : 'candidate_not_supported',
+      verification_status: 'verified',
     });
   } catch (error) {
     if (clientConnection.signal.aborted) return;
     console.error('Poem verification failed:', error);
+    if (error instanceof TavilyTimeoutError) {
+      const reason = `tavily_timeout_${error.phase}`;
+      await persistVerification(content, 'retryable_error', reason);
+      return res.status(200).json({ attribution: null, verification_status: reason });
+    }
+    if (error instanceof TavilyInvalidResponseError) {
+      await persistVerification(content, 'retryable_error', 'tavily_invalid_response');
+      return res.status(200).json({ attribution: null, verification_status: 'tavily_invalid_response' });
+    }
     if (error instanceof TavilyApiError && (error.status === 432 || error.status === 433)) {
       await persistVerification(content, 'retryable_error', `tavily_quota_${error.status}`);
       return res.status(200).json({ attribution: null, verification_status: 'search_quota_exhausted' });
+    }
+    if (error instanceof TavilyApiError) {
+      const reason = `tavily_http_${error.status}`;
+      await persistVerification(content, 'retryable_error', reason);
+      return res.status(200).json({ attribution: null, verification_status: reason });
     }
     await persistVerification(content, 'retryable_error', 'verification_error');
     return res.status(200).json({ attribution: null, verification_status: 'verification_error' });
