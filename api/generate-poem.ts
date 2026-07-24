@@ -45,6 +45,7 @@ function buildPoemPrompt(
 本次偏好：${language}；${era}。
 本次随机采样标志：${variationId}。该标志只用于打散每次选择，不得解释、复述或写入结果。
 以能够独立呈现完整意象的最短连续原文为准：单行已经完整时只返回单行；若单行只是铺垫、引出或条件，须连同完成核心意象的相邻后续诗行返回。不得截断或改写。
+content 字段只包含连续诗句原文。
 
 返回JSON：{"content":""}`;
 }
@@ -243,7 +244,7 @@ async function requestOpenRouterModel(fullPrompt: string, model: string): Promis
         messages: [
           {
             role: 'system',
-            content: 'Return JSON only with the schema {"content":""}. Find one authentic poetic excerpt. Use the shortest consecutive original excerpt that forms a complete image. Never truncate or rewrite it.',
+            content: 'Return JSON only with the schema {"content":""}. Find one authentic poetic excerpt. Use the shortest consecutive original excerpt that forms a complete image. Never truncate or rewrite it. The content field must contain only the consecutive original verse.',
           },
           {
             role: 'user',
@@ -343,7 +344,7 @@ async function generateWithDeepSeek(fullPrompt: string): Promise<PoemData> {
         messages: [
           {
             role: 'system',
-            content: 'Return valid JSON only. No markdown or commentary. The schema is {"content":""}. Find one authentic poetic excerpt. Use the shortest consecutive original excerpt that forms a complete image. Never truncate or rewrite it.',
+            content: 'Return valid JSON only. No markdown or commentary. The schema is {"content":""}. Find one authentic poetic excerpt. Use the shortest consecutive original excerpt that forms a complete image. Never truncate or rewrite it. The content field must contain only the consecutive original verse.',
           },
           {
             role: 'user',
