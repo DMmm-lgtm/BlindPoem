@@ -23,16 +23,6 @@ const OPENROUTER_MAX_MODEL_ATTEMPTS = 2;
 const OPENROUTER_FREE_COOLDOWN_MS = Number(process.env.OPENROUTER_FREE_COOLDOWN_SECONDS || 90) * 1000;
 const DEEPSEEK_TIMEOUT_MS = 12000;
 const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
-const VARIATION_LENSES = [
-  '优先选择不常被首先想到的具体物象或细节',
-  '优先从声音、停顿或寂静形成画面',
-  '优先从光线、阴影或颜色变化形成画面',
-  '优先从细小动作或瞬间变化形成画面',
-  '优先从距离、方向或空间层次形成画面',
-  '优先从触感、温度或天气形成画面',
-  '优先从一个日常器物或局部景物形成画面',
-  '优先选择较少被反复引用、但仍然完整自然的表达',
-];
 
 let lastOpenRouterFreeAttemptAt = 0;
 
@@ -45,19 +35,16 @@ function buildPoemPrompt(
   shouldMatchMood: boolean
 ): string {
   const mode = shouldMatchMood
-    ? `写出或想起一个贴合以下情绪的诗歌片段：${moodName}`
-    : '不参考任何情绪，随机写出或想起一个诗歌片段';
+    ? `帮我找到一个贴合以下情绪的真实诗歌片段：${moodName}`
+    : '不参考任何情绪，帮我随机找到一个真实诗歌片段';
   const language = pickRandom(['中文', '英文', '中英皆可']);
   const era = pickRandom(['古典', '现代', '当代', '任意时代']);
   const variationId = randomBytes(8).toString('hex');
-  const variationLens = pickRandom(VARIATION_LENSES);
 
   return `${mode}
 本次偏好：${language}；${era}。
 本次随机采样标志：${variationId}。该标志只用于打散每次选择，不得解释、复述或写入结果。
-本次取景偏好：${variationLens}。不要总是采用最著名、最常见或最先想到的诗句；在质量相当时选择与其他请求更不同的片段。
-只返回诗句本身，不要提供、猜测或虚构作者和篇名。
-以能够独立呈现完整意象的最短连续片段为准：单行已经完整时只返回单行；若单行只是铺垫、引出或条件，须连同完成核心意象的相邻后续诗行返回。不得截断。
+以能够独立呈现完整意象的最短连续原文为准：单行已经完整时只返回单行；若单行只是铺垫、引出或条件，须连同完成核心意象的相邻后续诗行返回。不得截断或改写。
 
 返回JSON：{"content":""}`;
 }
@@ -256,7 +243,7 @@ async function requestOpenRouterModel(fullPrompt: string, model: string): Promis
         messages: [
           {
             role: 'system',
-            content: 'Return JSON only with the schema {"content":""}. Write or recall one poetic excerpt. Do not provide or invent a title or author. Use the shortest excerpt that forms a complete image and never truncate it.',
+            content: 'Return JSON only with the schema {"content":""}. Find one authentic poetic excerpt. Use the shortest consecutive original excerpt that forms a complete image. Never truncate or rewrite it.',
           },
           {
             role: 'user',
@@ -356,7 +343,7 @@ async function generateWithDeepSeek(fullPrompt: string): Promise<PoemData> {
         messages: [
           {
             role: 'system',
-            content: 'Return valid JSON only. No markdown or commentary. The schema is {"content":""}. Write or recall one poetic excerpt, but do not provide or invent a title or author. Use the shortest excerpt that forms a complete image and never truncate it.',
+            content: 'Return valid JSON only. No markdown or commentary. The schema is {"content":""}. Find one authentic poetic excerpt. Use the shortest consecutive original excerpt that forms a complete image. Never truncate or rewrite it.',
           },
           {
             role: 'user',
