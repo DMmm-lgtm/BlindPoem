@@ -94,13 +94,19 @@ export async function generatePoem(
   }
 }
 
-export async function verifyPoemAttribution(content: string): Promise<PoemAttribution | null> {
+export async function verifyPoemAttribution(
+  content: string,
+  signal?: AbortSignal
+): Promise<PoemAttribution | null> {
+  if (signal?.aborted) return null;
   const cacheKey = normalizePoemCacheKey(content);
   const cache = readAttributionCache();
   const cached = cache[cacheKey];
   if (cached?.expiresAt > Date.now()) return cached.attribution;
 
   const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
   const timeoutId = setTimeout(() => controller.abort(), 28000);
 
   try {
@@ -138,5 +144,6 @@ export async function verifyPoemAttribution(content: string): Promise<PoemAttrib
     return null;
   } finally {
     clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
 }

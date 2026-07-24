@@ -211,6 +211,31 @@ function poemFragments(content: string): string[] {
   return [...new Set([normalize(content), ...fragments])].filter(Boolean);
 }
 
+function isMostlyLatin(content: string): boolean {
+  const latinCount = content.match(/[a-z]/gi)?.length || 0;
+  const hanCount = content.match(/[\u3400-\u9fff]/g)?.length || 0;
+  return latinCount >= 8 && latinCount > hanCount * 2;
+}
+
+function containsOrderedEnglishPoem(text: string, content: string): boolean {
+  if (!isMostlyLatin(content)) return false;
+
+  const fragments = content
+    .split(/[\n/／\\|，。、；！？,.!?;:：]+/)
+    .map((part) => normalize(part))
+    .filter((part) => part.length >= 6);
+  if (fragments.length < 2) return false;
+
+  const normalizedText = normalize(text);
+  let cursor = 0;
+  for (const fragment of fragments) {
+    const index = normalizedText.indexOf(fragment, cursor);
+    if (index < 0) return false;
+    cursor = index + fragment.length;
+  }
+  return true;
+}
+
 function searchResultTexts(result: SearchResult): string[] {
   return [result.title, result.content, result.rawContent];
 }
@@ -222,7 +247,9 @@ function containsPoem(result: SearchResult, content: string): boolean {
   // Attribution is attached to the whole displayed excerpt, so a source must
   // contain that whole excerpt. Matching only one clause must never authorize
   // an author/title for synthetic text joined to a genuine quotation.
-  return searchResultTexts(result).some((text) => normalize(text).includes(completePoem));
+  return searchResultTexts(result).some((text) => (
+    normalize(text).includes(completePoem) || containsOrderedEnglishPoem(text, content)
+  ));
 }
 
 function containsPartialPoem(result: SearchResult, content: string): boolean {
@@ -236,11 +263,13 @@ function containsPartialPoem(result: SearchResult, content: string): boolean {
   return fragments.some((fragment) => haystacks.some((text) => text.includes(fragment)));
 }
 
-async function tavilySearch(query: string): Promise<SearchResult[]> {
+async function tavilySearch(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) throw new Error('Missing TAVILY_API_KEY');
 
   const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
   const timeout = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
 
   try {
@@ -254,7 +283,7 @@ async function tavilySearch(query: string): Promise<SearchResult[]> {
         query,
         topic: 'general',
         search_depth: 'basic',
-        max_results: 8,
+        max_results: 5,
         include_answer: false,
         include_raw_content: true,
         include_images: false,
@@ -287,6 +316,7 @@ async function tavilySearch(query: string): Promise<SearchResult[]> {
     })).filter((result) => result.title && result.url);
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
@@ -322,12 +352,15 @@ type ReviewResult =
 async function callDeepSeek(
   system: string,
   user: string,
-  maxTokens: number
+  maxTokens: number,
+  signal?: AbortSignal
 ): Promise<Record<string, unknown> | null> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) return null;
 
   const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
   const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
@@ -361,14 +394,16 @@ async function callDeepSeek(
     return null;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
-async function identifyCandidate(content: string): Promise<CandidateResult> {
+async function identifyCandidate(content: string, signal?: AbortSignal): Promise<CandidateResult> {
   const parsed = await callDeepSeek(
     '判断整段诗句的真实作者和篇名。不得只凭其中一个名句推断；疑似拼接、改写、生成文本或不确定时返回u。只返回JSON。',
     `q=${JSON.stringify(content)}\n返回：{"s":"f|u","a":"作者","t":"篇名"}`,
-    80
+    80,
+    signal
   );
   if (!parsed) return { status: 'retryable_error', reason: 'ai_candidate_error' };
   if (parsed.s === 'u') return { status: 'unknown' };
@@ -384,12 +419,14 @@ async function identifyCandidate(content: string): Promise<CandidateResult> {
 async function reviewCandidate(
   content: string,
   author: string,
-  poemTitle: string
+  poemTitle: string,
+  signal?: AbortSignal
 ): Promise<ReviewResult> {
   const parsed = await callDeepSeek(
     '核查整段诗句的出处声明，优先找错。整段精确属于该作品才返回e；仅部分属于返回p；作者或篇名错误返回i；无把握返回u。不要顺从声明。只返回JSON。',
     `a=${JSON.stringify(author)}\nt=${JSON.stringify(poemTitle)}\nq=${JSON.stringify(content)}\n返回：{"s":"e|p|i|u"}`,
-    40
+    40,
+    signal
   );
   if (!parsed) return { status: 'retryable_error', reason: 'ai_review_error' };
   if (parsed.s === 'e') return { status: 'exact' };
@@ -434,6 +471,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const content = String(req.body?.content || '').trim();
   if (!content) return res.status(400).json({ error: 'Missing poem content' });
   if (content.length > 160) return res.status(400).json({ error: 'Poem content is too long' });
+
+  const clientConnection = new AbortController();
+  const abortDisconnectedClient = () => clientConnection.abort();
+  req.once('aborted', abortDisconnectedClient);
+  res.once('close', () => {
+    if (!res.writableEnded) abortDisconnectedClient();
+  });
 
   const cacheKey = normalize(content);
   const storedPoem = await getStoredPoem(cacheKey);
@@ -481,7 +525,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const candidate = await identifyCandidate(content);
+    const candidate = await identifyCandidate(content, clientConnection.signal);
+    if (clientConnection.signal.aborted) return;
     if (candidate.status === 'retryable_error') {
       await persistVerification(content, 'retryable_error', candidate.reason);
       return res.status(200).json({ attribution: null, verification_status: candidate.reason });
@@ -491,7 +536,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ attribution: null, verification_status: 'ai_unknown' });
     }
 
-    const review = await reviewCandidate(content, candidate.author, candidate.poem_title);
+    const review = await reviewCandidate(
+      content,
+      candidate.author,
+      candidate.poem_title,
+      clientConnection.signal
+    );
+    if (clientConnection.signal.aborted) return;
     if (review.status === 'retryable_error') {
       await persistVerification(content, 'retryable_error', review.reason);
       return res.status(200).json({ attribution: null, verification_status: review.reason });
@@ -522,7 +573,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const searchableExcerpt = content.replace(/[\n/／\\|]+/g, ' ').replace(/\s+/g, ' ').trim();
     const verificationQuery = `"${searchableExcerpt}" "${candidate.author}" "${candidate.poem_title}"`;
-    const searchResults = await tavilySearch(verificationQuery);
+    const searchResults = await tavilySearch(verificationQuery, clientConnection.signal);
+    if (clientConnection.signal.aborted) return;
     const matchingSources = searchResults.filter((result) => containsPoem(result, content));
     if (matchingSources.length === 0) {
       const reason = searchResults.some((result) => containsPartialPoem(result, content))
@@ -561,6 +613,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       verification_status: attribution ? 'verified' : 'candidate_not_supported',
     });
   } catch (error) {
+    if (clientConnection.signal.aborted) return;
     console.error('Poem verification failed:', error);
     if (error instanceof TavilyApiError && (error.status === 432 || error.status === 433)) {
       await persistVerification(content, 'retryable_error', `tavily_quota_${error.status}`);

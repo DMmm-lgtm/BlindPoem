@@ -739,6 +739,9 @@ function App() {
   const developerSecondStageExpiresAtRef = useRef(0);
   const developerModeTimerRef = useRef<number | null>(null);
   const developerMessageTimerRef = useRef<number | null>(null);
+  const attributionVerificationTimerRef = useRef<number | null>(null);
+  const attributionVerificationControllerRef = useRef<AbortController | null>(null);
+  const attributionVerificationSequenceRef = useRef(0);
 
   type StarParticle = {
     id: string;
@@ -2897,6 +2900,69 @@ function App() {
     return nearestDistance <= emojiSize * 0.9 ? nearestIndex : -1;
   }, [emojiSize]);
 
+  const cancelPoemAttributionVerification = useCallback(() => {
+    attributionVerificationSequenceRef.current += 1;
+    if (attributionVerificationTimerRef.current !== null) {
+      clearTimeout(attributionVerificationTimerRef.current);
+      attributionVerificationTimerRef.current = null;
+    }
+    attributionVerificationControllerRef.current?.abort();
+    attributionVerificationControllerRef.current = null;
+  }, []);
+
+  const schedulePoemAttributionVerification = useCallback((
+    content: string,
+    keyword: string
+  ) => {
+    // Latest poem wins: replace the one-second delay and stop waiting for any
+    // older verification. Server-side writes that already happened are kept.
+    cancelPoemAttributionVerification();
+    const sequence = attributionVerificationSequenceRef.current;
+
+    attributionVerificationTimerRef.current = window.setTimeout(() => {
+      attributionVerificationTimerRef.current = null;
+      if (sequence !== attributionVerificationSequenceRef.current) return;
+
+      const controller = new AbortController();
+      attributionVerificationControllerRef.current = controller;
+      void verifyPoemAttribution(content, controller.signal).then((attribution) => {
+        if (
+          !attribution ||
+          controller.signal.aborted ||
+          sequence !== attributionVerificationSequenceRef.current
+        ) return;
+
+        setPoemData((current) => current?.content === content ? {
+          ...current,
+          poem_title: attribution.poem_title,
+          author: attribution.author,
+          source_url: attribution.source_url,
+        } : current);
+        const updatedFavorites = updateFavoriteAttribution(content, {
+          author: attribution.author,
+          poem_title: attribution.poem_title,
+          source_url: attribution.source_url,
+        });
+        setFavorites(updatedFavorites);
+        void savePoemToDatabase(
+          content,
+          attribution.poem_title,
+          attribution.author,
+          keyword,
+          attribution.source_url
+        );
+      }).finally(() => {
+        if (attributionVerificationControllerRef.current === controller) {
+          attributionVerificationControllerRef.current = null;
+        }
+      });
+    }, 1000);
+  }, [cancelPoemAttributionVerification]);
+
+  useEffect(() => () => {
+    cancelPoemAttributionVerification();
+  }, [cancelPoemAttributionVerification]);
+
   // 处理点击诗句框外部区域
   const handleOutsideClick = () => {
     if (showQRCode && !isQRFadingOut) {
@@ -2912,6 +2978,7 @@ function App() {
     }
 
     if (!isPoemFadingOut) {
+      cancelPoemAttributionVerification();
       // 如果二维码未显示或已关闭，淡出诗句框
       setIsPoemFadingOut(true);
       console.log('✅ 诗句框开始淡出');
@@ -3023,6 +3090,7 @@ function App() {
     
     // 如果有诗句正在显示，先淡出
     if (poemData && !isPoemFadingOut) {
+      cancelPoemAttributionVerification();
       if (showQRCode && !isQRFadingOut) {
         console.log('✅ 检测到二维码，先淡出二维码...');
         setIsQRFadingOut(true);
@@ -3078,29 +3146,9 @@ function App() {
       rememberRecentPoem(normalizedContent);
       scheduleEmojiReplacementAfterPoemAppears();
 
-      // 核验不阻塞诗句展示；只有核验成功的署名才会显示并写入公共诗库。
-      void verifyPoemAttribution(normalizedContent).then((attribution) => {
-        if (!attribution) return;
-        setPoemData((current) => current?.content === normalizedContent ? {
-          ...current,
-          poem_title: attribution.poem_title,
-          author: attribution.author,
-          source_url: attribution.source_url,
-        } : current);
-        const updatedFavorites = updateFavoriteAttribution(normalizedContent, {
-          author: attribution.author,
-          poem_title: attribution.poem_title,
-          source_url: attribution.source_url,
-        });
-        setFavorites(updatedFavorites);
-        void savePoemToDatabase(
-          normalizedContent,
-          attribution.poem_title,
-          attribution.author,
-          keyword,
-          attribution.source_url
-        );
-      });
+      // Wait one second and verify only the latest poem. Older in-flight
+      // results are ignored even if their server-side work has already ended.
+      schedulePoemAttributionVerification(normalizedContent, keyword);
 
       console.log('✅ AI 返回成功：', poem);
     } catch (error) {
@@ -3113,6 +3161,7 @@ function App() {
 
       if (fallbackPoem) {
         const normalizedContent = formatPoemForDisplay(fallbackPoem.content);
+        cancelPoemAttributionVerification();
         setPoemData({
           content: normalizedContent,
           poem_title: fallbackPoem.poem_title || '未知',
