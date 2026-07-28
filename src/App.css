@@ -561,6 +561,9 @@
   font-family: 'Cormorant Garamond', Georgia, serif;
   font-style: italic;
   font-weight: 500;
+  left: -0.2em;
+  width: calc(100% + 0.4em);
+  padding-inline: 0.2em;
 }
 
 .poster-text-editor-horizontal {
@@ -590,6 +593,29 @@
   overflow: hidden;
   writing-mode: horizontal-tb;
   pointer-events: none;
+}
+
+.poster-horizontal-preview {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  font-family: QianTuBiFeng, serif;
+  pointer-events: none;
+}
+
+.poster-horizontal-preview-english {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.poster-horizontal-preview-line {
+  position: absolute;
+  left: 0;
+  display: block;
+  line-height: 1;
+  white-space: pre;
+  overflow: visible;
 }
 
 .poster-vertical-preview-column,
@@ -639,6 +665,12 @@
   pointer-events: none;
   white-space: nowrap;
   text-shadow: 0 0 0.8rem rgba(0, 0, 0, 0.75);
+}
+
+.poster-text-meta-english {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
 }
 
 .poster-text-meta-vertical {

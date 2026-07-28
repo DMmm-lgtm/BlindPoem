@@ -547,6 +547,10 @@ export function isEnglishPoem(text: string): boolean {
   return latinChars > 0 && latinChars >= cjkChars * 2;
 }
 
+export function formatVerticalPosterText(text: string): string {
+  return text.replace(/(?:-{2,}|—{1,2})/g, '︱');
+}
+
 function getPoemSourceLines(text: string): string[] {
   const explicitLines = text
     .split(/\r?\n/)
@@ -581,15 +585,7 @@ function createPosterLayoutText(poem: FavoritePoem, layout: PosterTextLayout): s
   }
 
   if (layout.kind === 'upper-left-vertical' || layout.kind === 'right-vertical') {
-    const fitted = fitVerticalPoemColumns(
-      getPoemSourceLines(layout.text || poem.content),
-      layout.width,
-      layout.height,
-      Math.round(52 * scale),
-      Math.round(26 * scale)
-    );
-
-    return fitted.columns.join('\n') || layout.text || poem.content;
+    return getPoemSourceLines(layout.text || poem.content).join('\n') || layout.text || poem.content;
   }
 
   const isRight = layout.kind === 'bottom-right-small';
@@ -661,7 +657,9 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
     nextLayout.height = Math.ceil(measuredHeight);
     nextLayout.fontScale = fontSize / (layout.kind === 'bottom-right-small' ? 44 : 54);
   } else if (layout.kind === 'upper-left-vertical' || layout.kind === 'right-vertical') {
-    const columns = sourceLines.map((line) => line.replace(/\s+/g, '')).filter(Boolean);
+    const columns = sourceLines
+      .map((line) => formatVerticalPosterText(line).replace(/\s+/g, ''))
+      .filter(Boolean);
     const measureVertical = (size: number) => {
       const lineHeight = Math.round(size * 1.22);
       const columnGap = Math.round(size * 0.86);
@@ -729,7 +727,10 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
 
   if (formattedLayout.kind.includes('vertical')) {
     const columnCount = Math.max(1, textLines.length);
-    const maxChars = Math.max(1, ...textLines.map((line) => [...line.replace(/\s+/g, '')].length));
+    const maxChars = Math.max(
+      1,
+      ...textLines.map((line) => [...formatVerticalPosterText(line).replace(/\s+/g, '')].length)
+    );
     // The editor uses one canonical integer font size. Box dimensions, character
     // advance and column gap are all derived from it, so fitting cannot silently
     // shrink the glyphs below the size recorded in fontScale.
@@ -843,7 +844,9 @@ function fitVerticalPoemColumns(
   startSize: number,
   minSize: number
 ): { fontSize: number; lineHeight: number; columnGap: number; columns: string[] } {
-  const columns = sourceLines.map((line) => line.replace(/\s+/g, '')).filter(Boolean);
+  const columns = sourceLines
+    .map((line) => formatVerticalPosterText(line).replace(/\s+/g, ''))
+    .filter(Boolean);
   // Vertical text has the same single 24px lower bound in preview and export.
   // Do not let a scale-derived minSize reintroduce the legacy 12px fallback:
   // that makes the glyph metrics diverge from the box redrawn at 24px.

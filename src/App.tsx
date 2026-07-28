@@ -21,6 +21,7 @@ import {
   downloadShareImage,
   createPosterLayoutForKind,
   formatPosterTextLayoutForEditing,
+  formatVerticalPosterText,
   generateShareImage,
   getPosterTextPreviewMetrics,
   getRemainingShareImageGenerations,
@@ -3630,14 +3631,14 @@ function App() {
                       }}
                       onDoubleClick={handleEnablePosterTextContentEdit}
                     >
-                      {draftPosterLayout.kind.includes('vertical')
-                        && !isPosterTextEditingContent
+                      {!isPosterTextEditingContent
                         && posterTextPreviewMetrics
-                        && posterEditorScale ? (
+                        && posterEditorScale
+                        && draftPosterLayout.kind.includes('vertical') ? (
                           <div className="poster-vertical-preview" aria-hidden="true">
                             {draftPosterLayout.text
                               .split(/\r?\n/)
-                              .map((line) => line.replace(/\s+/g, ''))
+                              .map((line) => formatVerticalPosterText(line).replace(/\s+/g, ''))
                               .filter(Boolean)
                               .map((column, columnIndex) => {
                                 const fontSize = posterTextPreviewMetrics.fontSize * posterEditorScale;
@@ -3674,6 +3675,31 @@ function App() {
                                   </span>
                                 );
                               })}
+                          </div>
+                        ) : !isPosterTextEditingContent
+                          && posterTextPreviewMetrics
+                          && posterEditorScale ? (
+                          <div
+                            className={`poster-horizontal-preview ${isEnglishPoem(selectedFavorite.content) ? 'poster-horizontal-preview-english' : ''}`}
+                            aria-hidden="true"
+                            style={{ textAlign: posterTextPreviewMetrics.textAlign }}
+                          >
+                            {draftPosterLayout.text
+                              .split(/\r?\n/)
+                              .filter(Boolean)
+                              .map((line, lineIndex) => (
+                                <span
+                                  key={`${line}-${lineIndex}`}
+                                  className="poster-horizontal-preview-line"
+                                  style={{
+                                    top: `${lineIndex * posterTextPreviewMetrics.lineHeight * posterEditorScale}px`,
+                                    width: `${draftPosterLayout.width * posterEditorScale}px`,
+                                    fontSize: `${posterTextPreviewMetrics.fontSize * posterEditorScale}px`,
+                                  }}
+                                >
+                                  {line}
+                                </span>
+                              ))}
                           </div>
                         ) : (
                           <textarea
@@ -3749,7 +3775,7 @@ function App() {
                     </div>
                     {posterTextPreviewMetrics && selectedFavorite.author && selectedFavorite.poem_title && (
                       <div
-                        className={`poster-text-meta poster-text-meta-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} poster-text-meta-${draftPosterLayout.kind}`}
+                        className={`poster-text-meta poster-text-meta-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} poster-text-meta-${draftPosterLayout.kind} ${isEnglishPoem(selectedFavorite.content) ? 'poster-text-meta-english' : ''}`}
                         style={{
                           ...getPosterMetaStyle(draftPosterLayout, posterTextPreviewMetrics, selectedFavorite),
                           fontSize: posterEditorScale
