@@ -11,6 +11,8 @@ const SHARE_BACKGROUND_BUCKET = 'share-backgrounds';
 const WEBSITE_URL = 'https://www.blindpoem.space/';
 const WEBSITE_DISPLAY_URL = 'www.blindpoem.space';
 const WEBSITE_QR_CODE_PATH = '/blindpoem-site-qr.png';
+const ENGLISH_POEM_FONT = '500 italic "Cormorant Garamond", Georgia, serif';
+const ENGLISH_META_FONT = '500 italic "Cormorant Garamond", Georgia, serif';
 const ENV_BYPASS_SHARE_IMAGE_LIMIT =
   import.meta.env.DEV && import.meta.env.VITE_BYPASS_SHARE_IMAGE_LIMIT === 'true';
 
@@ -238,6 +240,13 @@ function wrapEnglishText(context: CanvasRenderingContext2D, text: string, maxWid
   return lines;
 }
 
+function getEnglishSourceLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function fitEnglishLines(
   context: CanvasRenderingContext2D,
   text: string,
@@ -246,20 +255,23 @@ function fitEnglishLines(
   startSize: number,
   minSize: number
 ): { fontSize: number; lines: string[]; lineHeight: number } {
+  const sourceLines = getEnglishSourceLines(text);
+
   for (let fontSize = startSize; fontSize >= minSize; fontSize -= 2) {
-    context.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-    const lines = wrapEnglishText(context, text, maxWidth);
-    const tooWide = lines.some((line) => context.measureText(line).width > maxWidth);
-    if (lines.length <= maxLines && !tooWide) {
-      return { fontSize, lines, lineHeight: Math.round(fontSize * 1.28) };
+    context.font = `${fontSize}px ${ENGLISH_POEM_FONT}`;
+    const lineHeight = Math.round(fontSize * 1.34);
+    const tooWide = sourceLines.some((line) => context.measureText(line).width > maxWidth);
+    if (sourceLines.length <= maxLines && !tooWide) {
+      return { fontSize, lines: sourceLines, lineHeight };
     }
   }
 
-  context.font = `${minSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  context.font = `${minSize}px ${ENGLISH_POEM_FONT}`;
   return {
     fontSize: minSize,
-    lines: wrapEnglishText(context, text, maxWidth).slice(0, maxLines),
-    lineHeight: Math.round(minSize * 1.28),
+    // Explicit poem line breaks are semantic. Never silently rewrap or truncate them.
+    lines: sourceLines,
+    lineHeight: Math.round(minSize * 1.34),
   };
 }
 
@@ -643,17 +655,17 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
   let fontSize = getPosterTextStartSize(poem, layout);
 
   if (isEnglishPoem(poem.content)) {
-    context.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    context.font = `${fontSize}px ${ENGLISH_POEM_FONT}`;
     const lines = sourceLines.length > 0 ? sourceLines : [layout.text || poem.content];
-    const lineHeight = Math.round(fontSize * 1.28);
+    const lineHeight = Math.round(fontSize * 1.34);
     let measuredWidth = Math.max(1, ...lines.map((line) => context.measureText(line).width));
     let measuredHeight = Math.max(fontSize, (lines.length - 1) * lineHeight + fontSize);
     const fitScale = Math.min(1, maxWidth / measuredWidth, maxHeight / measuredHeight);
     if (fitScale < 1) {
       fontSize = Math.max(POSTER_UNBROKEN_MIN_FONT_SIZE, Math.floor(fontSize * fitScale));
-      context.font = `${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      context.font = `${fontSize}px ${ENGLISH_POEM_FONT}`;
       measuredWidth = Math.max(1, ...lines.map((line) => context.measureText(line).width));
-      const fittedLineHeight = Math.round(fontSize * 1.28);
+      const fittedLineHeight = Math.round(fontSize * 1.34);
       measuredHeight = Math.max(fontSize, (lines.length - 1) * fittedLineHeight + fontSize);
     }
     nextLayout.text = lines.join('\n');
@@ -757,7 +769,7 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
     const context = createMeasureContext();
     if (context) {
       context.font = isEnglishPoem(poem.content)
-        ? `${metrics.fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+        ? `${metrics.fontSize}px ${ENGLISH_POEM_FONT}`
         : `${metrics.fontSize}px QianTuBiFeng, serif`;
       const measuredWidth = Math.max(
         1,
@@ -921,7 +933,7 @@ function drawEnglishPosterText(
     Math.round((isRight ? 44 : 54) * scale),
     Math.round(24 * scale)
   );
-  context.font = `${fitted.fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  context.font = `${fitted.fontSize}px ${ENGLISH_POEM_FONT}`;
   fitted.lines.forEach((line, index) => {
     context.fillText(line, x, layout.y + index * fitted.lineHeight);
   });
@@ -930,7 +942,7 @@ function drawEnglishPosterText(
   context.fillStyle = style.accent;
   const metaFontSize = Math.round(26 * getMetaScaleFromFontSize(fitted.fontSize));
   const metaLineHeight = Math.round(metaFontSize * 1.32);
-  context.font = `${metaFontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  context.font = `${metaFontSize}px ${ENGLISH_META_FONT}`;
   context.textAlign = 'right';
   if (!hasPoemAttribution(poem)) return;
   const metaText = `《${poem.poem_title}》`;
@@ -1536,6 +1548,7 @@ async function composeShareImage(
   if (typeof document !== 'undefined' && 'fonts' in document) {
     try {
       await document.fonts.load('52px QianTuBiFeng');
+      await document.fonts.load('500 italic 52px "Cormorant Garamond"');
       await document.fonts.ready;
     } catch {
       // Keep image generation available on browsers without a working FontFaceSet.

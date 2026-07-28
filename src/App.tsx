@@ -3678,7 +3678,7 @@ function App() {
                         ) : (
                           <textarea
                             ref={posterEditorTextRef}
-                            className={`poster-text-editor poster-text-editor-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} ${isPosterTextEditingContent ? 'poster-text-editor-editing' : ''}`}
+                            className={`poster-text-editor poster-text-editor-${draftPosterLayout.kind.includes('vertical') ? 'vertical' : 'horizontal'} ${isEnglishPoem(selectedFavorite.content) ? 'poster-text-editor-english' : ''} ${isPosterTextEditingContent ? 'poster-text-editor-editing' : ''}`}
                             value={draftPosterLayout.text}
                             onChange={(event) => handleDraftLayoutTextChange(event.target.value)}
                             onBlur={() => setIsPosterTextEditingContent(false)}

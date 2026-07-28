@@ -7,6 +7,15 @@
   font-display: swap;
 }
 
+/* Cormorant Garamond is bundled so Canvas export and the editor preview match. */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  src: url('/CormorantGaramond-Italic-Variable.ttf') format('truetype');
+  font-weight: 300 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 /* 应用容器 - 入场动画 */
 .app-container {
   animation: appFadeIn 1.5s ease-out;
@@ -546,6 +555,12 @@
   pointer-events: none;
   cursor: move;
   vertical-align: top;
+}
+
+.poster-text-editor-english {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
 }
 
 .poster-text-editor-horizontal {
