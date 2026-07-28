@@ -23,6 +23,7 @@ import {
   createPosterLayoutForKind,
   formatPosterTextLayoutForEditing,
   formatVerticalPosterText,
+  getVerticalPosterGlyphs,
   generateShareImage,
   getPosterTextPreviewMetrics,
   getRemainingShareImageGenerations,
@@ -3653,6 +3654,7 @@ function App() {
                                   : (draftPosterLayout.width * posterEditorScale)
                                     - fontSize
                                     - columnIndex * columnGap;
+                                let slotIndex = 0;
 
                                 return (
                                   <span
@@ -3660,20 +3662,24 @@ function App() {
                                     className="poster-vertical-preview-column"
                                     style={{ left: `${columnLeft}px`, width: `${fontSize}px` }}
                                   >
-                                    {[...column].map((character, characterIndex) => (
-                                      <span
-                                        key={`${character}-${characterIndex}`}
-                                        className="poster-vertical-preview-character"
-                                        style={{
-                                          top: `${characterIndex * charAdvance}px`,
-                                          width: `${fontSize}px`,
-                                          height: `${fontSize}px`,
-                                          fontSize: `${fontSize}px`,
-                                        }}
-                                      >
-                                        {character}
-                                      </span>
-                                    ))}
+                                    {getVerticalPosterGlyphs(column).map(({ character, span }, characterIndex) => {
+                                      const characterTop = slotIndex * charAdvance;
+                                      slotIndex += span;
+                                      return (
+                                        <span
+                                          key={`${character}-${characterIndex}`}
+                                          className={`poster-vertical-preview-character ${character === '丨' ? 'poster-vertical-preview-dash' : ''}`}
+                                          style={{
+                                            top: `${characterTop}px`,
+                                            width: `${fontSize}px`,
+                                            height: `${character === '丨' ? span * charAdvance : fontSize}px`,
+                                            fontSize: `${fontSize}px`,
+                                          }}
+                                        >
+                                          {character === '丨' ? '' : character}
+                                        </span>
+                                      );
+                                    })}
                                   </span>
                                 );
                               })}

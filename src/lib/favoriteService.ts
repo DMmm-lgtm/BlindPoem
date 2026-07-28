@@ -20,7 +20,7 @@ export interface FavoritePoem {
 
 const FAVORITES_KEY = 'blindpoem.favorites.v1';
 const MAX_FAVORITES = 60;
-export const CURRENT_SHARE_RENDER_VERSION = 2;
+export const CURRENT_SHARE_RENDER_VERSION = 3;
 
 function isStorageQuotaError(error: unknown): boolean {
   const storageError = error as { name?: string; code?: number } | null;

@@ -626,6 +626,19 @@
   writing-mode: horizontal-tb;
 }
 
+.poster-vertical-preview-dash::before {
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  left: 50%;
+  width: 0.075em;
+  min-width: 1px;
+  border-radius: 999px;
+  background: currentColor;
+  content: '';
+  transform: translateX(-50%);
+}
+
 .poster-vertical-preview-column {
   top: 0;
   height: 100%;

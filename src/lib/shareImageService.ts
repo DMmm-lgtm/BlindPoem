@@ -556,6 +556,17 @@ export function formatVerticalPosterText(text: string): string {
   return text.replace(/(?:-{2,}|—{1,2})/g, '丨');
 }
 
+export function getVerticalPosterGlyphs(text: string): Array<{ character: string; span: number }> {
+  return [...formatVerticalPosterText(text).replace(/\s+/g, '')].map((character) => ({
+    character,
+    span: character === '丨' ? 2 : 1,
+  }));
+}
+
+function getVerticalPosterSlotCount(text: string): number {
+  return getVerticalPosterGlyphs(text).reduce((total, glyph) => total + glyph.span, 0);
+}
+
 function getPoemSourceLines(text: string): string[] {
   const explicitLines = text
     .split(/\r?\n/)
@@ -674,7 +685,7 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
         width: Math.max(size, size + Math.max(0, columns.length - 1) * columnGap),
         height: Math.max(
           size,
-          (Math.max(1, ...columns.map((column) => [...column].length)) - 1) * lineHeight + size
+          (Math.max(1, ...columns.map(getVerticalPosterSlotCount)) - 1) * lineHeight + size
         ),
       };
     };
@@ -736,7 +747,7 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
     const columnCount = Math.max(1, textLines.length);
     const maxChars = Math.max(
       1,
-      ...textLines.map((line) => [...formatVerticalPosterText(line).replace(/\s+/g, '')].length)
+      ...textLines.map(getVerticalPosterSlotCount)
     );
     // The editor uses one canonical integer font size. Box dimensions, character
     // advance and column gap are all derived from it, so fitting cannot silently
@@ -867,7 +878,7 @@ function fitVerticalPoemColumns(
     const columnGap = Math.round(fontSize * 0.86);
     const totalWidth = fontSize + Math.max(0, columns.length - 1) * columnGap;
     const fitsHeight = columns.every((column) => (
-      Math.max(fontSize, ([...column].length - 1) * lineHeight + fontSize) <= maxHeight
+      Math.max(fontSize, (getVerticalPosterSlotCount(column) - 1) * lineHeight + fontSize) <= maxHeight
     ));
 
     if (fitsHeight && totalWidth <= maxWidth) {
@@ -891,8 +902,23 @@ function drawVerticalColumns(
 ) {
   columns.forEach((column, columnIndex) => {
     const x = startX + columnIndex * columnGap * direction;
-    [...column].forEach((char, charIndex) => {
-      context.fillText(char, x, y + charIndex * lineHeight);
+    let slotIndex = 0;
+    getVerticalPosterGlyphs(column).forEach(({ character, span }) => {
+      const glyphY = y + slotIndex * lineHeight;
+      if (character === '丨') {
+        context.save();
+        context.strokeStyle = context.fillStyle;
+        context.lineWidth = Math.max(2, Math.round(lineHeight * 0.075));
+        context.lineCap = 'round';
+        context.beginPath();
+        context.moveTo(x, glyphY + lineHeight * 0.08);
+        context.lineTo(x, glyphY + lineHeight * span - lineHeight * 0.08);
+        context.stroke();
+        context.restore();
+      } else {
+        context.fillText(character, x, glyphY);
+      }
+      slotIndex += span;
     });
   });
 }
