@@ -7,6 +7,7 @@ export interface FavoritePoem {
   createdAt: string;
   shareImage?: string;
   shareImageCreatedAt?: string;
+  shareRenderVersion?: number;
   shareBackgroundImage?: string;
   shareBackgroundSource?: 'ai' | 'semantic-fallback' | 'local-fallback';
   shareLayout?: unknown;
@@ -19,6 +20,7 @@ export interface FavoritePoem {
 
 const FAVORITES_KEY = 'blindpoem.favorites.v1';
 const MAX_FAVORITES = 60;
+export const CURRENT_SHARE_RENDER_VERSION = 2;
 
 function isStorageQuotaError(error: unknown): boolean {
   const storageError = error as { name?: string; code?: number } | null;
@@ -194,6 +196,7 @@ export function updateFavoriteShareImage(
             ...favorite,
             shareImage,
             shareImageCreatedAt: new Date().toISOString(),
+            shareRenderVersion: CURRENT_SHARE_RENDER_VERSION,
             ...metadata,
           }
         : favorite

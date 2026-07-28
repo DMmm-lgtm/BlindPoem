@@ -15,6 +15,7 @@ import {
   removeFavorite,
   updateFavoriteShareImage,
   updateFavoriteAttribution,
+  CURRENT_SHARE_RENDER_VERSION,
 } from './lib/favoriteService';
 import type { FavoritePoem } from './lib/favoriteService';
 import {
@@ -1051,7 +1052,8 @@ function App() {
   useEffect(() => {
     if (
       !selectedFavorite ||
-      selectedFavorite.shareImage ||
+      (selectedFavorite.shareImage
+        && selectedFavorite.shareRenderVersion === CURRENT_SHARE_RENDER_VERSION) ||
       !selectedFavorite.shareBackgroundImage ||
       !isPosterTextLayout(selectedFavorite.shareLayout) ||
       sharePreviewRestoreAttemptsRef.current.has(selectedFavorite.id)
@@ -3695,6 +3697,9 @@ function App() {
                                     top: `${lineIndex * posterTextPreviewMetrics.lineHeight * posterEditorScale}px`,
                                     width: `${draftPosterLayout.width * posterEditorScale}px`,
                                     fontSize: `${posterTextPreviewMetrics.fontSize * posterEditorScale}px`,
+                                    paddingInline: posterTextPreviewMetrics.horizontalInset
+                                      ? `${posterTextPreviewMetrics.horizontalInset * posterEditorScale}px`
+                                      : undefined,
                                   }}
                                 >
                                   {line}

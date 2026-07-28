@@ -66,6 +66,7 @@ export type PosterTextPreviewMetrics = {
   textAlign: 'left' | 'right' | 'center';
   isVertical: boolean;
   verticalCharAdvance?: number;
+  horizontalInset?: number;
 };
 
 type RemoteShareImageResult = {
@@ -158,6 +159,10 @@ function getMetaScaleFromFontSize(fontSize: number): number {
 
 function getEnglishPoemFont(fontSize: number): string {
   return `italic 500 ${fontSize}px ${ENGLISH_POEM_FONT_FAMILY}`;
+}
+
+function getEnglishHorizontalInset(fontSize: number): number {
+  return Math.ceil(fontSize * 0.2);
 }
 
 function todayKey(): string {
@@ -548,7 +553,7 @@ export function isEnglishPoem(text: string): boolean {
 }
 
 export function formatVerticalPosterText(text: string): string {
-  return text.replace(/(?:-{2,}|—{1,2})/g, '︱');
+  return text.replace(/(?:-{2,}|—{1,2})/g, '丨');
 }
 
 function getPoemSourceLines(text: string): string[] {
@@ -643,12 +648,14 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
     const lines = sourceLines.length > 0 ? sourceLines : [layout.text || poem.content];
     const lineHeight = Math.round(fontSize * 1.34);
     let measuredWidth = Math.max(1, ...lines.map((line) => context.measureText(line).width));
+    measuredWidth += getEnglishHorizontalInset(fontSize) * 2;
     let measuredHeight = Math.max(fontSize, (lines.length - 1) * lineHeight + fontSize);
     const fitScale = Math.min(1, maxWidth / measuredWidth, maxHeight / measuredHeight);
     if (fitScale < 1) {
       fontSize = Math.max(POSTER_UNBROKEN_MIN_FONT_SIZE, Math.floor(fontSize * fitScale));
       context.font = getEnglishPoemFont(fontSize);
       measuredWidth = Math.max(1, ...lines.map((line) => context.measureText(line).width));
+      measuredWidth += getEnglishHorizontalInset(fontSize) * 2;
       const fittedLineHeight = Math.round(fontSize * 1.34);
       measuredHeight = Math.max(fontSize, (lines.length - 1) * fittedLineHeight + fontSize);
     }
@@ -764,7 +771,10 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
         1,
         ...textLines.map((line) => context.measureText(line).width)
       );
-      nextLayout.width = measuredWidth;
+      const horizontalInset = isEnglishPoem(poem.content)
+        ? getEnglishHorizontalInset(metrics.fontSize)
+        : 0;
+      nextLayout.width = measuredWidth + horizontalInset * 2;
     }
     // Match the DOM line-box model used by the textarea preview.
     nextLayout.height = Math.max(metrics.lineHeight, textLines.length * metrics.lineHeight)
@@ -911,7 +921,11 @@ function drawEnglishPosterText(
 ) {
   const isRight = layout.kind === 'bottom-right-small';
   const scale = getPosterFontScale(layout);
-  const x = isRight ? layout.x + layout.width : layout.x;
+  const fontSize = Math.round((isRight ? 44 : 54) * scale);
+  const horizontalInset = getEnglishHorizontalInset(fontSize);
+  const x = isRight
+    ? layout.x + layout.width - horizontalInset
+    : layout.x + horizontalInset;
 
   context.textAlign = isRight ? 'right' : 'left';
   context.fillStyle = style.text;
@@ -919,7 +933,7 @@ function drawEnglishPosterText(
   const fitted = fitEnglishLines(
     context,
     layout.text,
-    Math.round((isRight ? 44 : 54) * scale)
+    fontSize
   );
   context.font = getEnglishPoemFont(fitted.fontSize);
   fitted.lines.forEach((line, index) => {
@@ -1208,6 +1222,7 @@ export function getPosterTextPreviewMetrics(
       metaLineHeight: Math.round(34 * getMetaScaleFromFontSize(fitted.fontSize)),
       textAlign: isRight ? 'right' : 'left',
       isVertical: false,
+      horizontalInset: getEnglishHorizontalInset(fitted.fontSize),
     };
   }
 
