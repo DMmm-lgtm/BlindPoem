@@ -11,8 +11,7 @@ const SHARE_BACKGROUND_BUCKET = 'share-backgrounds';
 const WEBSITE_URL = 'https://www.blindpoem.space/';
 const WEBSITE_DISPLAY_URL = 'www.blindpoem.space';
 const WEBSITE_QR_CODE_PATH = '/blindpoem-site-qr.png';
-const ENGLISH_POEM_FONT = '500 italic "Cormorant Garamond", Georgia, serif';
-const ENGLISH_META_FONT = '500 italic "Cormorant Garamond", Georgia, serif';
+const ENGLISH_POEM_FONT_FAMILY = '"Cormorant Garamond", Georgia, serif';
 const ENV_BYPASS_SHARE_IMAGE_LIMIT =
   import.meta.env.DEV && import.meta.env.VITE_BYPASS_SHARE_IMAGE_LIMIT === 'true';
 
@@ -124,7 +123,7 @@ const POSTER_SAFE_AREA = {
 const POSTER_UNBROKEN_MIN_FONT_SIZE = 12;
 const POSTER_VERTICAL_BASE_FONT_SIZE = 52;
 const POSTER_EDITOR_MIN_FONT_SIZE = 24;
-const POSTER_DEFAULT_MIN_FONT_SCALE = 0.45;
+const POSTER_DEFAULT_MIN_FONT_SCALE = 0.73;
 
 const POSTER_TEXT_BASE_LAYOUTS: Record<PosterLayoutKind, Pick<PosterTextLayout, 'x' | 'y' | 'width' | 'height'>> = {
   'bottom-left': { x: 92, y: 900, width: 690, height: 310 },
@@ -155,6 +154,10 @@ function getPosterFontScale(layout: PosterTextLayout): number {
 
 function getMetaScaleFromFontSize(fontSize: number): number {
   return clamp(fontSize / 48, 0.72, 1.32);
+}
+
+function getEnglishPoemFont(fontSize: number): string {
+  return `italic 500 ${fontSize}px ${ENGLISH_POEM_FONT_FAMILY}`;
 }
 
 function todayKey(): string {
@@ -250,28 +253,16 @@ function getEnglishSourceLines(text: string): string[] {
 function fitEnglishLines(
   context: CanvasRenderingContext2D,
   text: string,
-  maxWidth: number,
-  maxLines: number,
-  startSize: number,
-  minSize: number
+  fontSize: number
 ): { fontSize: number; lines: string[]; lineHeight: number } {
   const sourceLines = getEnglishSourceLines(text);
-
-  for (let fontSize = startSize; fontSize >= minSize; fontSize -= 2) {
-    context.font = `${fontSize}px ${ENGLISH_POEM_FONT}`;
-    const lineHeight = Math.round(fontSize * 1.34);
-    const tooWide = sourceLines.some((line) => context.measureText(line).width > maxWidth);
-    if (sourceLines.length <= maxLines && !tooWide) {
-      return { fontSize, lines: sourceLines, lineHeight };
-    }
-  }
-
-  context.font = `${minSize}px ${ENGLISH_POEM_FONT}`;
+  context.font = getEnglishPoemFont(fontSize);
   return {
-    fontSize: minSize,
-    // Explicit poem line breaks are semantic. Never silently rewrap or truncate them.
+    fontSize,
+    // Font size and explicit line breaks are both user-controlled. The editor
+    // box is fitted to these metrics, so preview and Canvas export stay identical.
     lines: sourceLines,
-    lineHeight: Math.round(minSize * 1.34),
+    lineHeight: Math.round(fontSize * 1.34),
   };
 }
 
@@ -583,10 +574,7 @@ function createPosterLayoutText(poem: FavoritePoem, layout: PosterTextLayout): s
     const fitted = fitEnglishLines(
       context,
       layout.text || poem.content,
-      layout.width,
-      Math.max(1, Math.floor(layout.height / 40)),
-      Math.round((isRight ? 44 : 54) * scale),
-      Math.round(24 * scale)
+      Math.round((isRight ? 44 : 54) * scale)
     );
 
     return fitted.lines.join('\n') || layout.text || poem.content;
@@ -655,7 +643,7 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
   let fontSize = getPosterTextStartSize(poem, layout);
 
   if (isEnglishPoem(poem.content)) {
-    context.font = `${fontSize}px ${ENGLISH_POEM_FONT}`;
+    context.font = getEnglishPoemFont(fontSize);
     const lines = sourceLines.length > 0 ? sourceLines : [layout.text || poem.content];
     const lineHeight = Math.round(fontSize * 1.34);
     let measuredWidth = Math.max(1, ...lines.map((line) => context.measureText(line).width));
@@ -663,7 +651,7 @@ function createNaturalPosterTextLayout(poem: FavoritePoem, layout: PosterTextLay
     const fitScale = Math.min(1, maxWidth / measuredWidth, maxHeight / measuredHeight);
     if (fitScale < 1) {
       fontSize = Math.max(POSTER_UNBROKEN_MIN_FONT_SIZE, Math.floor(fontSize * fitScale));
-      context.font = `${fontSize}px ${ENGLISH_POEM_FONT}`;
+      context.font = getEnglishPoemFont(fontSize);
       measuredWidth = Math.max(1, ...lines.map((line) => context.measureText(line).width));
       const fittedLineHeight = Math.round(fontSize * 1.34);
       measuredHeight = Math.max(fontSize, (lines.length - 1) * fittedLineHeight + fontSize);
@@ -769,7 +757,7 @@ function fitPosterLayoutBoxToText(poem: FavoritePoem, layout: PosterTextLayout):
     const context = createMeasureContext();
     if (context) {
       context.font = isEnglishPoem(poem.content)
-        ? `${metrics.fontSize}px ${ENGLISH_POEM_FONT}`
+        ? getEnglishPoemFont(metrics.fontSize)
         : `${metrics.fontSize}px QianTuBiFeng, serif`;
       const measuredWidth = Math.max(
         1,
@@ -928,12 +916,9 @@ function drawEnglishPosterText(
   const fitted = fitEnglishLines(
     context,
     layout.text,
-    layout.width,
-    Math.max(1, Math.floor(layout.height / 40)),
-    Math.round((isRight ? 44 : 54) * scale),
-    Math.round(24 * scale)
+    Math.round((isRight ? 44 : 54) * scale)
   );
-  context.font = `${fitted.fontSize}px ${ENGLISH_POEM_FONT}`;
+  context.font = getEnglishPoemFont(fitted.fontSize);
   fitted.lines.forEach((line, index) => {
     context.fillText(line, x, layout.y + index * fitted.lineHeight);
   });
@@ -942,7 +927,7 @@ function drawEnglishPosterText(
   context.fillStyle = style.accent;
   const metaFontSize = Math.round(26 * getMetaScaleFromFontSize(fitted.fontSize));
   const metaLineHeight = Math.round(metaFontSize * 1.32);
-  context.font = `${metaFontSize}px ${ENGLISH_META_FONT}`;
+  context.font = getEnglishPoemFont(metaFontSize);
   context.textAlign = 'right';
   if (!hasPoemAttribution(poem)) return;
   const metaText = `《${poem.poem_title}》`;
@@ -1210,10 +1195,7 @@ export function getPosterTextPreviewMetrics(
     const fitted = fitEnglishLines(
       context,
       layout.text,
-      layout.width,
-      Math.max(1, Math.floor(layout.height / 40)),
-      Math.round((isRight ? 44 : 54) * scale),
-      Math.round(24 * scale)
+      Math.round((isRight ? 44 : 54) * scale)
     );
 
     return {
